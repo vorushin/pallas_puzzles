@@ -1038,25 +1038,3 @@ check(fused_relu_kernel, fused_relu_spec, (a11, b11),
 # ```
 # </details>
 
-# %% [markdown]
-# ---
-# ## Summary
-#
-# | Concept | Puzzle |
-# |---------|--------|
-# | `pallas_call`, Refs, `ref[...]` syntax | 1 |
-# | `grid`, `BlockSpec`, `program_id` | 2 |
-# | Index map manipulation | 3 |
-# | 2D grids and BlockSpecs | 4 |
-# | Broadcasting inside kernels | 5 |
-# | Configure your own `pallas_call` | 6 |
-# | `@pl.when` conditional execution, reduction | 7 |
-# | Matmul with scratch accumulator (VMEM) | 8 |
-# | Configure your own matmul `pallas_call` | 9 |
-# | Batched matmul, `None` dim squeeze | 10 |
-# | Activation fusion | 11 |
-#
-# ### Next
-#
-# Continue with **ragged_dot.py** — scalar prefetch, group metadata,
-# and the full ragged_dot kernel for Mixture-of-Experts.
