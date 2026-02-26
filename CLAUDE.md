@@ -76,11 +76,9 @@ should show and why it helps — don't create the diagram yet:
 # ![Alt text](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/<name>.drawio.svg)
 ```
 
-**Style**: blue (#dae8fc) for inputs/data, yellow (#fff2cc) for
-intermediates, green (#d5e8d4) for outputs, red (#f8cecc) for warnings,
-gray (#f5f5f5) for skip/neutral. Grid diagrams use 55×35 cells with
-fontSize 11-13. Keep diagrams compact — similar footprint to the content
-they illustrate.
+**Style**: keep diagrams visually consistent within a notebook (same
+colors, fonts, cell sizes). Keep them compact — similar footprint to
+the content they illustrate.
 
 ## Reviewing puzzles
 
