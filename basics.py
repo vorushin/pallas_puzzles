@@ -124,13 +124,11 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 # empty grid `()`, the kernel runs exactly once and sees the full arrays.
 #
 # ```
-# ┌────────────────────────┐
-# │  x_ref  →  [ read ]   │
-# │                ↓       │
-# │           x + 10.0     │
-# │                ↓       │
-# │  o_ref  ←  [ write ]  │
-# └────────────────────────┘
+#   x_ref  →  [ read ]
+#                 ↓
+#            x + 10.0
+#                 ↓
+#   o_ref  ←  [ write ]
 # ```
 
 # %%
