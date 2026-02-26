@@ -108,7 +108,7 @@
     </mxCell>
 
     <!-- Bottom note -->
-    <mxCell id="300" value="Score blocks live only in SRAM (never materialized in full)" style="text;fontSize=10;fontColor=#666666;fontStyle=2;align=center;" vertex="1" parent="1">
+    <mxCell id="300" value="Score blocks live only in VMEM (never materialized in full)" style="text;fontSize=10;fontColor=#666666;fontStyle=2;align=center;" vertex="1" parent="1">
       <mxGeometry x="30" y="200" width="360" height="20" as="geometry"/>
     </mxCell>
 

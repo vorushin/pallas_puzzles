@@ -16,7 +16,7 @@
         <mxPoint x="122" y="14" as="targetPoint"/>
       </mxGeometry>
     </mxCell>
-    <mxCell id="5" value="SRAM" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+    <mxCell id="5" value="VMEM" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
       <mxGeometry x="124" y="0" width="46" height="28" as="geometry"/>
     </mxCell>
     <mxCell id="6" value="" style="endArrow=block;endFill=1;strokeColor=#999999;" edge="1" parent="1">
@@ -45,7 +45,7 @@
         <mxPoint x="122" y="51" as="targetPoint"/>
       </mxGeometry>
     </mxCell>
-    <mxCell id="13" value="SRAM" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+    <mxCell id="13" value="VMEM" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
       <mxGeometry x="124" y="37" width="46" height="28" as="geometry"/>
     </mxCell>
     <mxCell id="14" value="" style="endArrow=block;endFill=1;strokeColor=#999999;" edge="1" parent="1">
@@ -74,7 +74,7 @@
         <mxPoint x="122" y="88" as="targetPoint"/>
       </mxGeometry>
     </mxCell>
-    <mxCell id="23" value="SRAM" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+    <mxCell id="23" value="VMEM" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
       <mxGeometry x="124" y="74" width="46" height="28" as="geometry"/>
     </mxCell>
     <mxCell id="24" value="" style="endArrow=block;endFill=1;strokeColor=#999999;" edge="1" parent="1">
