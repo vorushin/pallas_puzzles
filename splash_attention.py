@@ -41,9 +41,11 @@
 # ## Setup
 
 # %%
+#@title Install dependencies
 # !pip install -q jax jaxtyping
 
 # %%
+#@title Imports
 import functools
 import jax
 import jax.numpy as jnp
@@ -54,6 +56,7 @@ print(f"JAX {jax.__version__}")
 
 
 # %%
+#@title check() helper
 def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
           out_shape=None, scratch_shapes=(), atol=1e-3, rtol=1e-3, **kwargs):
     """Run a Pallas kernel in interpret mode and compare against a reference spec.
@@ -144,6 +147,7 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 # notebook learning to **never materialize S**.
 
 # %%
+#@title Diagram: Dot-Product Attention
 from IPython.display import SVG, display
 display(SVG(data='''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" font-family="monospace" font-size="13">
   <rect width="720" height="340" fill="white"/>
@@ -486,6 +490,7 @@ else:
 # single pass, then use them to compute the final softmax output.
 
 # %%
+#@title Diagram: Online Softmax
 from IPython.display import SVG, display
 display(SVG(data='''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 300" font-family="monospace" font-size="12">
   <rect width="760" height="300" fill="white"/>
@@ -910,6 +915,7 @@ else:
 # `(bq, bk)` tile is computed, used, and discarded.
 
 # %%
+#@title Diagram: Flash Attention Grid
 from IPython.display import SVG, display
 display(SVG(data='''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580 460" font-family="monospace" font-size="12">
   <rect width="580" height="460" fill="white"/>
@@ -1148,6 +1154,7 @@ check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
 # blocks are **never loaded from HBM**.
 
 # %%
+#@title Diagram: Causal Block Mask
 from IPython.display import SVG, display
 display(SVG(data='''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 480" font-family="monospace" font-size="12">
   <rect width="560" height="480" fill="white"/>
@@ -1668,6 +1675,7 @@ else:
 # This is the production pattern from `jax.experimental.pallas.ops.tpu.splash_attention`.
 
 # %%
+#@title Diagram: Compacted Iteration (Splash)
 from IPython.display import SVG, display
 display(SVG(data='''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 420" font-family="monospace" font-size="12">
   <rect width="780" height="420" fill="white"/>
