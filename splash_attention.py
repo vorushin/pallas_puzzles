@@ -39,6 +39,9 @@
 
 # %% [markdown]
 # ## Setup
+#
+# Collapse this section (▶ arrow next to the heading), then **Run all cells
+# in section** from the menu to get everything ready in one click.
 
 # %%
 #@title Install dependencies
