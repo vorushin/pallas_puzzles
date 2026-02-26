@@ -402,6 +402,29 @@ check(mul2d_kernel, mul2d_spec, (x4,),
 # - For `b`: grid `(i, j)` → tile `(j,)` (only depends on col)
 # - For `out`: grid `(i, j)` → tile `(i, j)`
 #
+# ```
+#              b (N=64)
+#            [b₀ ][b₁ ]
+#             j=0  j=1
+#           ┌─────┬─────┐
+#   a  a₀   │ a₀  │ a₀  │
+#  (M  i=0  │ ×b₀ │ ×b₁ │
+#  =        ├─────┼─────┤
+#  128 a₁   │ a₁  │ a₁  │
+#  )   i=1  │ ×b₀ │ ×b₁ │
+#           ├─────┼─────┤
+#       a₂  │ a₂  │ a₂  │
+#       i=2 │ ×b₀ │ ×b₁ │
+#           ├─────┼─────┤
+#       a₃  │ a₃  │ a₃  │
+#       i=3 │ ×b₀ │ ×b₁ │
+#           └─────┴─────┘
+#          output (128×64)
+#
+# Each tile (i,j): a_ref=(bm,) and b_ref=(bn,)
+#   → broadcast to (bm, bn) via [:, None] * [None, :]
+# ```
+#
 # Inside the kernel, `a_ref` has shape `(bm,)` and `b_ref` has shape `(bn,)`.
 # You need to broadcast them: `a_ref[...][:, None] * b_ref[...][None, :]`
 # produces shape `(bm, bn)`.
