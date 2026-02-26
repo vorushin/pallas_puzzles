@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 340" font-family="monospace" font-size="13">
+  <rect width="720" height="340" fill="white"/>
+
+  <!-- Q matrix -->
+  <rect x="30" y="60" width="60" height="120" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="60" y="130" text-anchor="middle" fill="#1e40af" font-size="12">Q</text>
+  <text x="60" y="200" text-anchor="middle" fill="#6b7280" font-size="10">T × d</text>
+
+  <!-- × sign -->
+  <text x="110" y="125" text-anchor="middle" fill="#374151" font-size="18">@</text>
+
+  <!-- K^T matrix -->
+  <rect x="130" y="80" width="120" height="60" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="190" y="117" text-anchor="middle" fill="#1e40af" font-size="12">K^T</text>
+  <text x="190" y="160" text-anchor="middle" fill="#6b7280" font-size="10">d × T</text>
+
+  <!-- = sign -->
+  <text x="270" y="125" text-anchor="middle" fill="#374151" font-size="18">=</text>
+
+  <!-- S matrix (big red square - THE BOTTLENECK) -->
+  <rect x="290" y="40" width="140" height="140" rx="4" fill="#fef2f2" stroke="#ef4444" stroke-width="2.5"/>
+  <text x="360" y="115" text-anchor="middle" fill="#b91c1c" font-weight="bold" font-size="14">S / √d</text>
+  <text x="360" y="135" text-anchor="middle" fill="#dc2626" font-size="11">T × T</text>
+  <text x="360" y="205" text-anchor="middle" fill="#dc2626" font-weight="bold" font-size="13">⚠ O(T²) memory!</text>
+
+  <!-- Arrow down to P -->
+  <line x1="360" y1="185" x2="360" y2="225" stroke="#6b7280" stroke-width="1" marker-end="url(#arrow)"/>
+  <text x="385" y="215" fill="#6b7280" font-size="10">softmax</text>
+
+  <!-- Arrow to P @ V -->
+  <text x="460" y="270" text-anchor="middle" fill="#374151" font-size="14">→</text>
+
+  <!-- P matrix -->
+  <rect x="290" y="230" width="140" height="50" rx="4" fill="#dcfce7" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="360" y="260" text-anchor="middle" fill="#166534" font-size="12">P (T×T)</text>
+
+  <!-- × V -->
+  <text x="445" y="260" text-anchor="middle" fill="#374151" font-size="14">@</text>
+  <rect x="465" y="230" width="50" height="50" rx="4" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="490" y="260" text-anchor="middle" fill="#1e40af" font-size="12">V</text>
+
+  <!-- = O -->
+  <text x="530" y="260" text-anchor="middle" fill="#374151" font-size="14">=</text>
+  <rect x="545" y="230" width="60" height="50" rx="4" fill="#dcfce7" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="575" y="260" text-anchor="middle" fill="#166534" font-size="12">O</text>
+  <text x="575" y="300" text-anchor="middle" fill="#6b7280" font-size="10">T × d</text>
+
+  <!-- Title -->
+  <text x="360" y="25" text-anchor="middle" fill="#111827" font-weight="bold" font-size="15">Dot-Product Attention</text>
+
+  <!-- Arrow marker -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280"/>
+    </marker>
+  </defs>
+</svg>

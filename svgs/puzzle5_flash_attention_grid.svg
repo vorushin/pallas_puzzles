@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 580 460" font-family="monospace" font-size="12">
+  <rect width="580" height="460" fill="white"/>
+
+  <!-- Title -->
+  <text x="290" y="25" text-anchor="middle" fill="#111827" font-weight="bold" font-size="15">Flash Attention — Tiled Grid</text>
+
+  <!-- Column labels -->
+  <text x="195" y="55" text-anchor="middle" fill="#6b7280" font-size="10">KV 0</text>
+  <text x="275" y="55" text-anchor="middle" fill="#6b7280" font-size="10">KV 1</text>
+  <text x="355" y="55" text-anchor="middle" fill="#6b7280" font-size="10">KV 2</text>
+  <text x="435" y="55" text-anchor="middle" fill="#6b7280" font-size="10">KV 3</text>
+
+  <!-- Row labels -->
+  <text x="125" y="100" text-anchor="end" fill="#6b7280" font-size="10">Q block 0</text>
+  <text x="125" y="180" text-anchor="end" fill="#6b7280" font-size="10">Q block 1</text>
+  <text x="125" y="260" text-anchor="end" fill="#6b7280" font-size="10">Q block 2</text>
+  <text x="125" y="340" text-anchor="end" fill="#6b7280" font-size="10">Q block 3</text>
+
+  <!-- Grid cells - all blue since flash processes everything -->
+  <!-- Row 0 -->
+  <rect x="155" y="65" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="235" y="65" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="315" y="65" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="395" y="65" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+
+  <!-- Row 1 - highlighted as active -->
+  <rect x="155" y="145" width="70" height="65" rx="3" fill="#93c5fd" stroke="#3b82f6" stroke-width="2.5"/>
+  <rect x="235" y="145" width="70" height="65" rx="3" fill="#93c5fd" stroke="#3b82f6" stroke-width="2.5"/>
+  <rect x="315" y="145" width="70" height="65" rx="3" fill="#93c5fd" stroke="#3b82f6" stroke-width="2.5"/>
+  <rect x="395" y="145" width="70" height="65" rx="3" fill="#93c5fd" stroke="#3b82f6" stroke-width="2.5"/>
+
+  <!-- Active row arrow -->
+  <line x1="160" y1="178" x2="458" y2="178" stroke="#2563eb" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#bluearr)"/>
+  <text x="490" y="170" fill="#2563eb" font-size="10" font-weight="bold">iterate</text>
+  <text x="490" y="185" fill="#2563eb" font-size="10" font-weight="bold">all KV →</text>
+
+  <!-- Row 2 -->
+  <rect x="155" y="225" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="235" y="225" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="315" y="225" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="395" y="225" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+
+  <!-- Row 3 -->
+  <rect x="155" y="305" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="235" y="305" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="315" y="305" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+  <rect x="395" y="305" width="70" height="65" rx="3" fill="#dbeafe" stroke="#93c5fd" stroke-width="1"/>
+
+  <!-- Cell labels - bq×bk -->
+  <text x="190" y="102" text-anchor="middle" fill="#3b82f6" font-size="9">bq×bk</text>
+  <text x="270" y="102" text-anchor="middle" fill="#3b82f6" font-size="9">bq×bk</text>
+
+  <!-- Bottom label -->
+  <text x="290" y="400" text-anchor="middle" fill="#374151" font-size="11">Each (bq×bk) score tile computed in SRAM, then discarded</text>
+  <text x="290" y="418" text-anchor="middle" fill="#374151" font-size="11">Score matrix never fully materialized</text>
+
+  <!-- Memory badge -->
+  <rect x="210" y="430" width="160" height="25" rx="12" fill="#dcfce7" stroke="#22c55e" stroke-width="1.5"/>
+  <text x="290" y="448" text-anchor="middle" fill="#166534" font-weight="bold" font-size="12">O(T) memory ✓</text>
+
+  <defs>
+    <marker id="bluearr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+  </defs>
+</svg>

@@ -12,6 +12,7 @@ All puzzles run on CPU via `interpret=True` — no TPU needed.
 |------|-------|
 | `basics.py` | Pallas foundations: Refs, grids, BlockSpec, tiled matmul, fusion |
 | `ragged_dot.py` | Scalar prefetch, group metadata, grouped matmul for MoE |
+| `splash_attention.py` | Online softmax, flash attention, causal & block-sparse masks, splash attention |
 
 Use `uv` for package management. Edit `.py` files (source of truth), then
 `bash update_notebooks.sh` to regenerate `.ipynb`. Commit both.
