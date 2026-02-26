@@ -107,11 +107,11 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 # %%
 #@title attention_spec() — reference implementation (used by test cells)
 def attention_spec(Q, K, V):
-    """Standard dot-product attention: softmax(Q @ K.T / sqrt(H)) @ V"""
+    """Standard dot-product attention: softmax(QK^T / sqrt(H)) @ V"""
     H = Q.shape[-1]
-    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
+    S = jnp.einsum('th,sh->ts', Q, K) / jnp.sqrt(H).astype(Q.dtype)
     P = jax.nn.softmax(S, axis=-1)
-    return P @ V
+    return jnp.einsum('ts,sh->th', P, V)
 
 
 # %% [markdown]
@@ -168,12 +168,14 @@ V1 = jax.random.normal(jax.random.key(2), (T1, H1))
 
 # --- Your implementation ---
 def my_attention(Q, K, V):
-    """Implement: softmax(Q @ K.T / sqrt(H)) @ V
+    """Implement: softmax(QK^T / sqrt(H)) V
+
+    Q: (T, H), K: (T, H), V: (T, H) → output: (T, H)
 
     Steps:
-      1. Compute scores S = Q @ K^T, scaled by 1/sqrt(H)
-      2. Apply softmax along the last axis (over keys)
-      3. Multiply the attention weights P by V
+      1. Compute scores S = QK^T / sqrt(H) using jnp.einsum  → (T, T)
+      2. Apply softmax along the last axis (over keys)        → (T, T)
+      3. Multiply the attention weights P by V via einsum     → (T, H)
     """
     pass  # YOUR CODE HERE
 
@@ -193,9 +195,10 @@ else:
 # <details><summary>Hint 1 of 2 — Which JAX functions?</summary>
 #
 # You need three operations:
-# - `Q @ K.T` for matrix multiply, scaled by `1 / jnp.sqrt(H)`
-# - `jax.nn.softmax(..., axis=-1)` to normalize rows
-# - One more `@` to multiply weights by V
+# - `jnp.einsum('th,sh->ts', Q, K)` contracts over H → scores `(T, T)`
+# - `jax.nn.softmax(..., axis=-1)` normalizes rows
+# - `jnp.einsum('ts,sh->th', P, V)` contracts over S → output `(T, H)`
+# Don't forget to scale scores by `1 / jnp.sqrt(H)`
 # </details>
 #
 # <details><summary>Hint 2 of 2 — Full solution</summary>
@@ -203,9 +206,9 @@ else:
 # ```python
 # def my_attention(Q, K, V):
 #     H = Q.shape[-1]
-#     S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
+#     S = jnp.einsum('th,sh->ts', Q, K) / jnp.sqrt(H).astype(Q.dtype)
 #     P = jax.nn.softmax(S, axis=-1)
-#     return P @ V
+#     return jnp.einsum('ts,sh->th', P, V)
 # ```
 # </details>
 
@@ -562,10 +565,10 @@ else:
 # ```
 #
 # For each KV block, the kernel:
-# 1. Computes scores: `s = Q_block @ K_block.T / sqrt(H)` → `(bq, bk)`
+# 1. Computes scores: `s = einsum('qh,kh->qk', Q_block, K_block) / sqrt(H)` → `(bq, bk)`
 # 2. Updates online softmax stats `(m, ℓ)` per row
 # 3. **Corrects** the running output accumulator for the new max
-# 4. Adds new contribution: `acc += P_block @ V_block`
+# 4. Adds new contribution: `acc += einsum('qk,kh->qh', P_block, V_block)`
 # 5. After last KV block: normalizes by `1/ℓ`
 #
 # The key insight is step 3: when the max changes, we must **rescale**
@@ -575,11 +578,11 @@ else:
 # ```python
 # correction = exp(m_old - m_new)     # (bq,) per-row correction
 # acc = acc * correction[:, None]     # rescale all H columns
-# acc += P_block @ V_block            # add new contribution
+# acc += einsum('qk,kh->qh', P_block, V_block)  # add new contribution
 # ```
 #
 # After the last KV block, we normalize: `output = acc / ℓ[:, None]`.
-# (This is because we've been accumulating unnormalized `exp(s - m) @ V`,
+# (This is because we've been accumulating unnormalized `exp(s - m) · V`,
 # and need to divide by the total `ℓ = sum(exp(s - m))` at the end.)
 #
 # **Scratch memory** holds three things:
@@ -601,10 +604,10 @@ V4 = jax.random.normal(jax.random.key(32), (T4, H4))
 # --- Reference: attention for just the first Q block ---
 def attention_one_block_spec(Q, K, V):
     """Attention output for first bq4 rows only."""
-    q_block = Q[:bq4]                          # (bq4, H4)
-    S = q_block @ K.T / jnp.sqrt(H4).astype(Q.dtype)  # (bq4, T4)
-    P = jax.nn.softmax(S, axis=-1)             # (bq4, T4)
-    return P @ V                               # (bq4, H4)
+    q_block = Q[:bq4]                                          # (bq4, H4)
+    S = jnp.einsum('qh,kh->qk', q_block, K) / jnp.sqrt(H4).astype(Q.dtype)  # (bq4, T4)
+    P = jax.nn.softmax(S, axis=-1)                             # (bq4, T4)
+    return jnp.einsum('qk,kh->qh', P, V)                      # (bq4, H4)
 
 
 # --- Kernel: tiled attention for one Q block ---
@@ -624,14 +627,14 @@ def tiled_attention_one_block_kernel(
     kv = pl.program_id(0)
     pass  # YOUR CODE HERE
     # 1. On first KV block: init acc=0, m=-inf, l=0
-    # 2. Compute scores: s = q @ k.T / sqrt(H4)       → (bq4, bk4)
+    # 2. Scores: s = einsum('qh,kh->qk', q, k) / sqrt(H4)  → (bq4, bk4)
     # 3. Compute row-wise max of scores: m_tile        → (bq4,)
     # 4. Update running max: m_new = max(m, m_tile)    → (bq4,)
     # 5. Correction factor: corr = exp(m - m_new)      → (bq4,)
     # 6. Rescale accumulator: acc *= corr[:, None]
     # 7. Compute P_block = exp(s - m_new[:, None])     → (bq4, bk4)
     # 8. Update l: l = l * corr + P_block.sum(axis=-1)
-    # 9. Accumulate: acc += P_block @ v
+    # 9. Accumulate: acc += einsum('qk,kh->qh', P_block, v)
     # 10. Update m = m_new
     # 11. On LAST KV block: o = acc / l[:, None]
 
@@ -678,7 +681,7 @@ else:
 # q = q_ref[...]
 # k = k_ref[...]
 # v = v_ref[...]
-# s = q @ k.T / jnp.sqrt(H4).astype(jnp.float32)  # (bq4, bk4)
+# s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H4).astype(jnp.float32)  # (bq4, bk4)
 # ```
 # </details>
 #
@@ -692,7 +695,7 @@ else:
 # acc_ref[...] = acc_ref[...] * corr[:, None]       # rescale old output
 # p = jnp.exp(s - m_new[:, None])                   # (bq4, bk4)
 # l_ref[...] = l_ref[...] * corr + p.sum(axis=-1)  # update sum_exp
-# acc_ref[...] = acc_ref[...] + p @ v               # accumulate P @ V
+# acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)    # accumulate P @ V
 # m_ref[...] = m_new
 # ```
 # </details>
@@ -713,7 +716,7 @@ else:
 #     q = q_ref[...]
 #     k = k_ref[...]
 #     v = v_ref[...]
-#     s = q @ k.T / jnp.sqrt(H4).astype(jnp.float32)
+#     s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H4).astype(jnp.float32)
 #
 #     m_tile = jnp.max(s, axis=-1)
 #     m_new = jnp.maximum(m_ref[...], m_tile)
@@ -722,7 +725,7 @@ else:
 #     acc_ref[...] = acc_ref[...] * corr[:, None]
 #     p = jnp.exp(s - m_new[:, None])
 #     l_ref[...] = l_ref[...] * corr + p.sum(axis=-1)
-#     acc_ref[...] = acc_ref[...] + p @ v
+#     acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #     m_ref[...] = m_new
 #
 #     @pl.when(kv == tiles_kv4 - 1)
@@ -769,7 +772,7 @@ else:
 #            └──────┴──────┴──────┴──────┘
 #
 # We never materialize the full score matrix!
-# Each block s[i,j] = Q_block_i @ K_block_j.T / √H  is (bq × bk)
+# Each block s[i,j] = einsum(Q_block_i, K_block_j) / √H  is (bq × bk)
 # and lives only in SRAM for the duration of that grid point.
 # ```
 #
@@ -797,11 +800,11 @@ V5 = jax.random.normal(jax.random.key(42), (T5, H5))
 
 # --- Reference ---
 def flash_attention_spec(Q, K, V):
-    """Full attention: softmax(Q @ K.T / sqrt(H)) @ V"""
+    """Full attention: softmax(QK^T / sqrt(H)) @ V"""
     H = Q.shape[-1]
-    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
+    S = jnp.einsum('th,sh->ts', Q, K) / jnp.sqrt(H).astype(Q.dtype)
     P = jax.nn.softmax(S, axis=-1)
-    return P @ V
+    return jnp.einsum('ts,sh->th', P, V)
 
 
 # --- Kernel ---
@@ -872,7 +875,7 @@ check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
 #     q = q_ref[...]
 #     k = k_ref[...]
 #     v = v_ref[...]
-#     s = q @ k.T / jnp.sqrt(H5).astype(jnp.float32)
+#     s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H5).astype(jnp.float32)
 #
 #     m_tile = jnp.max(s, axis=-1)
 #     m_new = jnp.maximum(m_ref[...], m_tile)
@@ -881,7 +884,7 @@ check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
 #     acc_ref[...] = acc_ref[...] * corr[:, None]
 #     p = jnp.exp(s - m_new[:, None])
 #     l_ref[...] = l_ref[...] * corr + p.sum(axis=-1)
-#     acc_ref[...] = acc_ref[...] + p @ v
+#     acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #     m_ref[...] = m_new
 #
 #     @pl.when(kv == tiles_kv5 - 1)
@@ -970,11 +973,11 @@ def causal_attention_spec(Q, K, V):
     """Attention with causal mask."""
     H = Q.shape[-1]
     T = Q.shape[0]
-    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
+    S = jnp.einsum('th,sh->ts', Q, K) / jnp.sqrt(H).astype(Q.dtype)
     mask = jnp.tril(jnp.ones((T, T), dtype=jnp.bool_))
     S = jnp.where(mask, S, -jnp.inf)
     P = jax.nn.softmax(S, axis=-1)
-    return P @ V
+    return jnp.einsum('ts,sh->th', P, V)
 
 
 # --- Kernel ---
@@ -1065,7 +1068,7 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 #         q = q_ref[...]
 #         k = k_ref[...]
 #         v = v_ref[...]
-#         s = q @ k.T / jnp.sqrt(H6).astype(jnp.float32)
+#         s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H6).astype(jnp.float32)
 #
 #         # Apply causal mask for partial blocks
 #         q_idx = i * bq6 + jnp.arange(bq6)[:, None]
@@ -1080,7 +1083,7 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 #         acc_ref[...] = acc_ref[...] * corr[:, None]
 #         p = jnp.exp(s - m_new[:, None])
 #         l_ref[...] = l_ref[...] * corr + p.sum(axis=-1)
-#         acc_ref[...] = acc_ref[...] + p @ v
+#         acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #         m_ref[...] = m_new
 #
 #     @pl.when(kv == tiles_kv6 - 1)
@@ -1197,7 +1200,7 @@ def block_sparse_attention_spec(Q, K, V, block_mask, partial_masks):
     """Attention with block-sparse mask (reference implementation)."""
     H = Q.shape[-1]
     T = Q.shape[0]
-    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
+    S = jnp.einsum('th,sh->ts', Q, K) / jnp.sqrt(H).astype(Q.dtype)
     # Reconstruct full mask from block_mask + partial_masks
     full_mask = jnp.zeros((T, T), dtype=jnp.bool_)
     pidx = 0
@@ -1213,7 +1216,7 @@ def block_sparse_attention_spec(Q, K, V, block_mask, partial_masks):
                 pidx += 1
     S = jnp.where(full_mask, S, -jnp.inf)
     P = jax.nn.softmax(S, axis=-1)
-    return P @ V
+    return jnp.einsum('ts,sh->th', P, V)
 
 
 # --- Kernel ---
@@ -1324,7 +1327,7 @@ else:
 #         q = q_ref[...]
 #         k = k_ref[...]
 #         v = v_ref[...]
-#         s = q @ k.T / jnp.sqrt(H7).astype(jnp.float32)
+#         s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H7).astype(jnp.float32)
 #
 #         # Apply partial mask for diagonal blocks.
 #         # For causal: block i has partial mask i (one per Q row).
@@ -1340,7 +1343,7 @@ else:
 #         acc_ref[...] = acc_ref[...] * corr[:, None]
 #         p = jnp.exp(s - m_new[:, None])
 #         l_ref[...] = l_ref[...] * corr + p.sum(axis=-1)
-#         acc_ref[...] = acc_ref[...] + p @ v
+#         acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #         m_ref[...] = m_new
 #
 #     @pl.when(kv == tiles_kv7 - 1)
@@ -1470,11 +1473,11 @@ def splash_attention_spec(Q, K, V, data_next, mask_next, partial_masks):
     """Same as causal attention — splash is an optimization, not a different computation."""
     H = Q.shape[-1]
     T = Q.shape[0]
-    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
+    S = jnp.einsum('th,sh->ts', Q, K) / jnp.sqrt(H).astype(Q.dtype)
     mask = jnp.tril(jnp.ones((T, T), dtype=jnp.bool_))
     S = jnp.where(mask, S, -jnp.inf)
     P = jax.nn.softmax(S, axis=-1)
-    return P @ V
+    return jnp.einsum('ts,sh->th', P, V)
 
 
 # --- Index maps for PrefetchScalarGridSpec ---
@@ -1601,7 +1604,7 @@ else:
 #         q = q_ref[...]
 #         k = k_ref[...]
 #         v = v_ref[...]
-#         s = q @ k.T / jnp.sqrt(H8).astype(jnp.float32)
+#         s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H8).astype(jnp.float32)
 #
 #         # For causal: Q block i → partial mask i (one per row)
 #         is_partial = (block_type == 1)
@@ -1615,7 +1618,7 @@ else:
 #         acc_ref[...] = acc_ref[...] * corr[:, None]
 #         p = jnp.exp(s - m_new[:, None])
 #         l_ref[...] = l_ref[...] * corr + p.sum(axis=-1)
-#         acc_ref[...] = acc_ref[...] + p @ v
+#         acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #         m_ref[...] = m_new
 #
 #     @pl.when(step == grid_width8 - 1)
