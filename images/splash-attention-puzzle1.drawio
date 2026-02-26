@@ -4,7 +4,7 @@
     <mxCell id="1" parent="0"/>
 
     <!-- Q: T x H (tall, narrow) -->
-    <mxCell id="2" value="Q" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+    <mxCell id="2" value="&lt;b&gt;Q&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;html=1;" vertex="1" parent="1">
       <mxGeometry x="0" y="0" width="30" height="90" as="geometry"/>
     </mxCell>
     <mxCell id="3" value="@" style="text;fontSize=14;fontColor=#666666;align=center;" vertex="1" parent="1">
@@ -12,7 +12,7 @@
     </mxCell>
 
     <!-- K^T: H x T (short, wide) -->
-    <mxCell id="4" value="K^T" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+    <mxCell id="4" value="&lt;b&gt;K&lt;/b&gt;&lt;sup&gt;T&lt;/sup&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;html=1;" vertex="1" parent="1">
       <mxGeometry x="50" y="30" width="90" height="30" as="geometry"/>
     </mxCell>
     <mxCell id="5" value="=" style="text;fontSize=14;fontColor=#666666;align=center;" vertex="1" parent="1">
@@ -20,12 +20,12 @@
     </mxCell>
 
     <!-- S/sqrt(H): T x T (big square) -->
-    <mxCell id="6" value="S / √H" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+    <mxCell id="6" value="&lt;b&gt;S&lt;/b&gt; / √H" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;html=1;" vertex="1" parent="1">
       <mxGeometry x="160" y="0" width="90" height="90" as="geometry"/>
     </mxCell>
 
     <!-- softmax arrow -->
-    <mxCell id="7" value="softmax" style="fontSize=10;fontStyle=2;fontColor=#666666;endArrow=block;endFill=1;strokeWidth=1;strokeColor=#999999;" edge="1" parent="1">
+    <mxCell id="7" value="&lt;i&gt;softmax&lt;/i&gt;" style="fontSize=10;fontColor=#666666;endArrow=block;endFill=1;strokeWidth=1;strokeColor=#999999;html=1;" edge="1" parent="1">
       <mxGeometry relative="1" as="geometry">
         <mxPoint x="252" y="45" as="sourcePoint"/>
         <mxPoint x="310" y="45" as="targetPoint"/>
@@ -33,7 +33,7 @@
     </mxCell>
 
     <!-- P: T x T (big square) -->
-    <mxCell id="8" value="P" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+    <mxCell id="8" value="&lt;b&gt;P&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;html=1;" vertex="1" parent="1">
       <mxGeometry x="312" y="0" width="90" height="90" as="geometry"/>
     </mxCell>
 
@@ -42,7 +42,7 @@
     </mxCell>
 
     <!-- V: T x H (tall, narrow) -->
-    <mxCell id="10" value="V" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+    <mxCell id="10" value="&lt;b&gt;V&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;html=1;" vertex="1" parent="1">
       <mxGeometry x="422" y="0" width="30" height="90" as="geometry"/>
     </mxCell>
     <mxCell id="11" value="=" style="text;fontSize=14;fontColor=#666666;align=center;" vertex="1" parent="1">
@@ -50,32 +50,32 @@
     </mxCell>
 
     <!-- O: T x H (tall, narrow) -->
-    <mxCell id="12" value="O" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+    <mxCell id="12" value="&lt;b&gt;O&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;html=1;" vertex="1" parent="1">
       <mxGeometry x="472" y="0" width="30" height="90" as="geometry"/>
     </mxCell>
 
     <!-- Dimension labels -->
-    <mxCell id="20" value="T × H" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+    <mxCell id="20" value="T &amp;times; H" style="text;fontSize=9;fontColor=#999999;align=center;html=1;" vertex="1" parent="1">
       <mxGeometry x="-5" y="93" width="40" height="16" as="geometry"/>
     </mxCell>
-    <mxCell id="21" value="H × T" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+    <mxCell id="21" value="H &amp;times; T" style="text;fontSize=9;fontColor=#999999;align=center;html=1;" vertex="1" parent="1">
       <mxGeometry x="50" y="63" width="90" height="16" as="geometry"/>
     </mxCell>
-    <mxCell id="22" value="T × T" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+    <mxCell id="22" value="T &amp;times; T" style="text;fontSize=9;fontColor=#999999;align=center;html=1;" vertex="1" parent="1">
       <mxGeometry x="160" y="93" width="90" height="16" as="geometry"/>
     </mxCell>
-    <mxCell id="23" value="T × T" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+    <mxCell id="23" value="T &amp;times; T" style="text;fontSize=9;fontColor=#999999;align=center;html=1;" vertex="1" parent="1">
       <mxGeometry x="312" y="93" width="90" height="16" as="geometry"/>
     </mxCell>
-    <mxCell id="24" value="T × H" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+    <mxCell id="24" value="T &amp;times; H" style="text;fontSize=9;fontColor=#999999;align=center;html=1;" vertex="1" parent="1">
       <mxGeometry x="417" y="93" width="40" height="16" as="geometry"/>
     </mxCell>
-    <mxCell id="25" value="T × H" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+    <mxCell id="25" value="T &amp;times; H" style="text;fontSize=9;fontColor=#999999;align=center;html=1;" vertex="1" parent="1">
       <mxGeometry x="467" y="93" width="40" height="16" as="geometry"/>
     </mxCell>
 
     <!-- O(T^2) memory annotation -->
-    <mxCell id="30" value="← O(T²) memory! →" style="text;fontSize=10;fontColor=#b85450;fontStyle=2;align=center;" vertex="1" parent="1">
+    <mxCell id="30" value="&amp;larr; O(T&amp;sup2;) memory! &amp;rarr;" style="text;fontSize=10;fontColor=#b85450;fontStyle=2;align=center;html=1;" vertex="1" parent="1">
       <mxGeometry x="160" y="112" width="242" height="18" as="geometry"/>
     </mxCell>
 
