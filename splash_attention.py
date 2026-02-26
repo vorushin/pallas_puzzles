@@ -55,56 +55,6 @@ print(f"JAX {jax.__version__}")
 
 
 # %%
-def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
-          out_shape=None, scratch_shapes=(), atol=1e-3, rtol=1e-3, **kwargs):
-    """Run a Pallas kernel in interpret mode and compare against a reference spec.
-
-    Args:
-        kernel_fn: The Pallas kernel to test.
-        spec_fn: Reference function computing the expected output in pure JAX.
-        inputs: Tuple of input arrays.
-        grid: Pallas grid tuple.
-        in_specs: List of BlockSpec for inputs (None = no blocking).
-        out_specs: BlockSpec for output (None = no blocking).
-        out_shape: jax.ShapeDtypeStruct for the output.
-        scratch_shapes: Scratch memory specs (empty by default).
-        atol, rtol: Tolerance for comparison.
-        **kwargs: Extra args to pl.pallas_call.
-    """
-    expected = spec_fn(*inputs)
-    if out_shape is None:
-        out_shape = jax.ShapeDtypeStruct(expected.shape, expected.dtype)
-
-    # Handle default specs
-    if in_specs is None:
-        in_specs = [pl.BlockSpec(memory_space=pl.ANY)] * len(inputs)
-    if out_specs is None:
-        out_specs = pl.BlockSpec(memory_space=pl.ANY)
-
-    actual = pl.pallas_call(
-        kernel_fn,
-        grid=grid,
-        in_specs=in_specs,
-        out_specs=out_specs,
-        out_shape=out_shape,
-        scratch_shapes=scratch_shapes,
-        interpret=True,
-        **kwargs,
-    )(*inputs)
-
-    if jnp.allclose(actual, expected, atol=atol, rtol=rtol):
-        print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
-    else:
-        diff = jnp.abs(actual - expected)
-        max_err = float(jnp.max(diff))
-        worst_idx = jnp.unravel_index(jnp.argmax(diff), diff.shape)
-        print(f"FAILED ✗  max error: {max_err:.6f} at index {tuple(int(i) for i in worst_idx)}")
-        n = min(4, expected.shape[0])
-        print(f"  Expected (first {n}):\n{expected[:n]}")
-        print(f"  Got      (first {n}):\n{actual[:n]}")
-
-
-# %%
 def attention_spec(Q, K, V):
     """Standard dot-product attention: softmax(QK^T / sqrt(H)) @ V"""
     H = Q.shape[-1]
@@ -157,12 +107,12 @@ def attention_spec(Q, K, V):
 
 
 # %%
-T1 = 128    # sequence length
-H1 = 64     # head dimension
+T = 128    # sequence length
+H = 64     # head dimension
 
-Q1 = jax.random.normal(jax.random.key(0), (T1, H1))
-K1 = jax.random.normal(jax.random.key(1), (T1, H1))
-V1 = jax.random.normal(jax.random.key(2), (T1, H1))
+Q = jax.random.normal(jax.random.key(0), (T, H))
+K = jax.random.normal(jax.random.key(1), (T, H))
+V = jax.random.normal(jax.random.key(2), (T, H))
 
 
 # --- Your implementation ---
@@ -180,15 +130,15 @@ def my_attention(Q, K, V):
 
 
 # %%
-expected1 = attention_spec(Q1, K1, V1)
-actual1 = my_attention(Q1, K1, V1)
+expected = attention_spec(Q, K, V)
+actual = my_attention(Q, K, V)
 
-if actual1 is not None and jnp.allclose(actual1, expected1, atol=1e-3):
-    print(f"PASSED ✓  (shape={actual1.shape}, dtype={actual1.dtype})")
+if actual is not None and jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
 else:
     print("FAILED ✗")
-    if actual1 is not None:
-        print(f"  Max error: {float(jnp.max(jnp.abs(actual1 - expected1))):.6f}")
+    if actual is not None:
+        print(f"  Max error: {float(jnp.max(jnp.abs(actual - expected))):.6f}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — Which JAX functions?</summary>
@@ -265,13 +215,13 @@ else:
 # forces multiple passes.
 
 # %%
-N2 = 512          # vector length
-bn2 = 128         # tile size
-tiles_k2 = N2 // bn2
+N = 512          # vector length
+bn = 128         # tile size
+tiles_k = N // bn
 
 # --- Reference ---
 def softmax_spec(x):
-    """x: (N2,) → (N2,)"""
+    """x: (N,) → (N,)"""
     return jax.nn.softmax(x)
 
 
@@ -279,10 +229,10 @@ def softmax_spec(x):
 def tiled_max_kernel(x_ref, m_ref):
     """Tile over x to compute global max m.
 
-    x_ref: (bn2,) — one tile of x
-    m_ref: ()     — running global max (scalar output)
+    x_ref: (bn,) — one tile of x
+    m_ref: ()    — running global max (scalar output)
 
-    Grid: (tiles_k2,) — iterates over tiles of x
+    Grid: (tiles_k,) — iterates over tiles of x
     """
     k = pl.program_id(0)
     # YOUR CODE HERE
@@ -294,11 +244,11 @@ def tiled_max_kernel(x_ref, m_ref):
 def tiled_sumexp_kernel(x_ref, m_ref, l_ref):
     """Tile over x to compute l = sum(exp(x - m)), given global max m.
 
-    x_ref: (bn2,) — one tile of x
-    m_ref: ()     — global max (input, already computed by kernel 1)
-    l_ref: ()     — running sum of exp(x - m) (scalar output)
+    x_ref: (bn,) — one tile of x
+    m_ref: ()    — global max (input, already computed by kernel 1)
+    l_ref: ()    — running sum of exp(x - m) (scalar output)
 
-    Grid: (tiles_k2,) — iterates over tiles of x
+    Grid: (tiles_k,) — iterates over tiles of x
     """
     k = pl.program_id(0)
     # YOUR CODE HERE
@@ -307,49 +257,49 @@ def tiled_sumexp_kernel(x_ref, m_ref, l_ref):
 
 
 # %%
-x2 = jax.random.uniform(jax.random.key(10), (N2,), minval=-5.0, maxval=-1.0)
+x = jax.random.uniform(jax.random.key(10), (N,), minval=-5.0, maxval=-1.0)
 
 # Pass 1: find global max
-m2 = pl.pallas_call(
+m = pl.pallas_call(
     tiled_max_kernel,
-    grid=(tiles_k2,),
-    in_specs=[pl.BlockSpec((bn2,), lambda k: (k,))],
+    grid=(tiles_k,),
+    in_specs=[pl.BlockSpec((bn,), lambda k: (k,))],
     out_specs=pl.BlockSpec(memory_space=pl.ANY),
     out_shape=jax.ShapeDtypeStruct((), jnp.float32),
     interpret=True,
-)(x2)
+)(x)
 
 # Pass 2: compute sum(exp(x - m)) — needs m from pass 1
-l2 = pl.pallas_call(
+l = pl.pallas_call(
     tiled_sumexp_kernel,
-    grid=(tiles_k2,),
+    grid=(tiles_k,),
     in_specs=[
-        pl.BlockSpec((bn2,), lambda k: (k,)),  # x: tiled
-        pl.BlockSpec(memory_space=pl.ANY),       # m: scalar, no blocking
+        pl.BlockSpec((bn,), lambda k: (k,)),  # x: tiled
+        pl.BlockSpec(memory_space=pl.ANY),      # m: scalar, no blocking
     ],
     out_specs=pl.BlockSpec(memory_space=pl.ANY),
     out_shape=jax.ShapeDtypeStruct((), jnp.float32),
     interpret=True,
-)(x2, m2)
+)(x, m)
 
 # Pass 3: normalize (just JAX, no kernel needed)
-softmax2 = jnp.exp(x2 - m2) / l2
+result = jnp.exp(x - m) / l
 
-expected_m2 = jnp.max(x2)
-expected_l2 = jnp.sum(jnp.exp(x2 - expected_m2))
-expected2 = softmax_spec(x2)
-m_ok = jnp.allclose(m2, expected_m2, atol=1e-3)
-l_ok = jnp.allclose(l2, expected_l2, atol=1e-3)
-s_ok = jnp.allclose(softmax2, expected2, atol=1e-3)
+expected_m = jnp.max(x)
+expected_l = jnp.sum(jnp.exp(x - expected_m))
+expected = softmax_spec(x)
+m_ok = jnp.allclose(m, expected_m, atol=1e-3)
+l_ok = jnp.allclose(l, expected_l, atol=1e-3)
+s_ok = jnp.allclose(result, expected, atol=1e-3)
 if m_ok and l_ok and s_ok:
-    print(f"PASSED ✓  (m={float(m2):.3f}, l={float(l2):.3f})")
+    print(f"PASSED ✓  (m={float(m):.3f}, l={float(l):.3f})")
 else:
     if not m_ok:
-        print(f"FAILED ✗  m={float(m2):.3f} (expected {float(expected_m2):.3f})")
+        print(f"FAILED ✗  m={float(m):.3f} (expected {float(expected_m):.3f})")
     if not l_ok:
-        print(f"FAILED ✗  l={float(l2):.3f} (expected {float(expected_l2):.3f})")
+        print(f"FAILED ✗  l={float(l):.3f} (expected {float(expected_l):.3f})")
     if not s_ok:
-        print(f"FAILED ✗  softmax max error: {float(jnp.max(jnp.abs(softmax2 - expected2))):.6f}")
+        print(f"FAILED ✗  softmax max error: {float(jnp.max(jnp.abs(result - expected))):.6f}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — tiled_max_kernel</summary>
@@ -458,13 +408,13 @@ else:
 
 
 # %%
-N3 = 512
-bn3 = 128
-tiles_k3 = N3 // bn3
+N = 512
+bn = 128
+tiles_k = N // bn
 
 # --- Reference ---
-def softmax_spec3(x):
-    """x: (N3,) → (N3,)"""
+def softmax_spec(x):
+    """x: (N,) → (N,)"""
     return jax.nn.softmax(x)
 
 
@@ -472,11 +422,11 @@ def softmax_spec3(x):
 def online_softmax_kernel(x_ref, m_ref, l_ref):
     """Single-pass softmax stats: m = global max, l = sum(exp(x - m)).
 
-    x_ref: (bn3,) — one tile of x
-    m_ref: ()     — running global max (scalar)
-    l_ref: ()     — running sum of exponentials (scalar)
+    x_ref: (bn,) — one tile of x
+    m_ref: ()    — running global max (scalar)
+    l_ref: ()    — running sum of exponentials (scalar)
 
-    Grid: (tiles_k3,) — iterates over tiles of x
+    Grid: (tiles_k,) — iterates over tiles of x
 
     Unlike Puzzle 2, we use a unified update rule for ALL tiles:
     - Initialize m = -inf, l = 0 on first tile
@@ -490,12 +440,12 @@ def online_softmax_kernel(x_ref, m_ref, l_ref):
 
 
 # %%
-x3 = jax.random.normal(jax.random.key(20), (N3,))
+x = jax.random.normal(jax.random.key(20), (N,))
 
-m3, l3 = pl.pallas_call(
+m, l = pl.pallas_call(
     online_softmax_kernel,
-    grid=(tiles_k3,),
-    in_specs=[pl.BlockSpec((bn3,), lambda k: (k,))],
+    grid=(tiles_k,),
+    in_specs=[pl.BlockSpec((bn,), lambda k: (k,))],
     out_specs=(
         pl.BlockSpec(memory_space=pl.ANY),
         pl.BlockSpec(memory_space=pl.ANY),
@@ -505,17 +455,17 @@ m3, l3 = pl.pallas_call(
         jax.ShapeDtypeStruct((), jnp.float32),
     ),
     interpret=True,
-)(x3)
+)(x)
 
-softmax3 = jnp.exp(x3 - m3) / l3
+result = jnp.exp(x - m) / l
 
-expected3 = softmax_spec3(x3)
-if jnp.allclose(softmax3, expected3, atol=1e-3):
-    print(f"PASSED ✓  (m={float(m3):.3f}, l={float(l3):.3f})")
+expected = softmax_spec(x)
+if jnp.allclose(result, expected, atol=1e-3):
+    print(f"PASSED ✓  (m={float(m):.3f}, l={float(l):.3f})")
 else:
-    print(f"FAILED ✗  max error: {float(jnp.max(jnp.abs(softmax3 - expected3))):.6f}")
-    print(f"  m={float(m3):.3f} (expected {float(jnp.max(x3)):.3f})")
-    print(f"  l={float(l3):.3f} (expected {float(jnp.sum(jnp.exp(x3 - jnp.max(x3)))):.3f})")
+    print(f"FAILED ✗  max error: {float(jnp.max(jnp.abs(result - expected))):.6f}")
+    print(f"  m={float(m):.3f} (expected {float(jnp.max(x)):.3f})")
+    print(f"  l={float(l):.3f} (expected {float(jnp.sum(jnp.exp(x - jnp.max(x)))):.3f})")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — The unified update rule</summary>
@@ -616,48 +566,48 @@ else:
 # - `l`: `(bq,)` — running sum of exponentials per row
 
 # %%
-T4 = 128      # sequence length
-H4 = 64       # head dimension
-bq4 = 32      # Q block size
-bk4 = 32      # KV block size
-tiles_kv4 = T4 // bk4
+T = 128      # sequence length
+H = 64       # head dimension
+bq = 32      # Q block size
+bk = 32      # KV block size
+tiles_kv = T // bk
 
-Q4 = jax.random.normal(jax.random.key(30), (T4, H4))
-K4 = jax.random.normal(jax.random.key(31), (T4, H4))
-V4 = jax.random.normal(jax.random.key(32), (T4, H4))
+Q = jax.random.normal(jax.random.key(30), (T, H))
+K = jax.random.normal(jax.random.key(31), (T, H))
+V = jax.random.normal(jax.random.key(32), (T, H))
 
 # --- Reference: attention for just the first Q block ---
 def attention_one_block_spec(Q, K, V):
-    """Attention output for first bq4 rows only."""
-    q_block = Q[:bq4]                                          # (bq4, H4)
-    S = jnp.einsum('qh,kh->qk', q_block, K) / jnp.sqrt(H4).astype(Q.dtype)  # (bq4, T4)
-    P = jax.nn.softmax(S, axis=-1)                             # (bq4, T4)
-    return jnp.einsum('qk,kh->qh', P, V)                      # (bq4, H4)
+    """Attention output for first bq rows only."""
+    q_block = Q[:bq]                                          # (bq, H)
+    S = jnp.einsum('qh,kh->qk', q_block, K) / jnp.sqrt(H).astype(Q.dtype)  # (bq, T)
+    P = jax.nn.softmax(S, axis=-1)                             # (bq, T)
+    return jnp.einsum('qk,kh->qh', P, V)                      # (bq, H)
 
 
 # --- Kernel: tiled attention for one Q block ---
 def tiled_attention_one_block_kernel(
-    q_ref,      # (bq4, H4) — the Q block (same for all KV iterations)
-    k_ref,      # (bk4, H4) — one KV block
-    v_ref,      # (bk4, H4) — one KV block
-    o_ref,      # (bq4, H4) — output
-    acc_ref,    # (bq4, H4) — scratch: running output accumulator
-    m_ref,      # (bq4,)    — scratch: running row max
-    l_ref,      # (bq4,)    — scratch: running row sum_exp
+    q_ref,      # (bq, H) — the Q block (same for all KV iterations)
+    k_ref,      # (bk, H) — one KV block
+    v_ref,      # (bk, H) — one KV block
+    o_ref,      # (bq, H) — output
+    acc_ref,    # (bq, H) — scratch: running output accumulator
+    m_ref,      # (bq,)   — scratch: running row max
+    l_ref,      # (bq,)   — scratch: running row sum_exp
 ):
     """Process one KV block for a single Q block using online softmax.
 
-    Grid: (tiles_kv4,) — iterates over KV blocks
+    Grid: (tiles_kv,) — iterates over KV blocks
     """
     kv = pl.program_id(0)
     # YOUR CODE HERE
     # 1. On first KV block: init acc=0, m=-inf, l=0
-    # 2. Scores: s = einsum('qh,kh->qk', q, k) / sqrt(H4)  → (bq4, bk4)
-    # 3. Compute row-wise max of scores: m_tile        → (bq4,)
-    # 4. Update running max: m_new = max(m, m_tile)    → (bq4,)
-    # 5. Correction factor: corr = exp(m - m_new)      → (bq4,)
+    # 2. Scores: s = einsum('qh,kh->qk', q, k) / sqrt(H)  → (bq, bk)
+    # 3. Compute row-wise max of scores: m_tile        → (bq,)
+    # 4. Update running max: m_new = max(m, m_tile)    → (bq,)
+    # 5. Correction factor: corr = exp(m - m_new)      → (bq,)
     # 6. Rescale accumulator: acc *= corr[:, None]
-    # 7. Compute P_block = exp(s - m_new[:, None])     → (bq4, bk4)
+    # 7. Compute P_block = exp(s - m_new[:, None])     → (bq, bk)
     # 8. Update l: l = l * corr + P_block.sum(axis=-1)
     # 9. Accumulate: acc += einsum('qk,kh->qh', P_block, v)
     # 10. Update m = m_new
@@ -665,33 +615,33 @@ def tiled_attention_one_block_kernel(
 
 
 # %%
-expected4 = attention_one_block_spec(Q4, K4, V4)
+expected = attention_one_block_spec(Q, K, V)
 
-actual4 = pl.pallas_call(
+actual = pl.pallas_call(
     tiled_attention_one_block_kernel,
-    grid=(tiles_kv4,),
+    grid=(tiles_kv,),
     in_specs=[
-        pl.BlockSpec((bq4, H4), lambda kv: (0, 0)),       # Q: always first block
-        pl.BlockSpec((bk4, H4), lambda kv: (kv, 0)),      # K: iterate over blocks
-        pl.BlockSpec((bk4, H4), lambda kv: (kv, 0)),      # V: iterate over blocks
+        pl.BlockSpec((bq, H), lambda kv: (0, 0)),       # Q: always first block
+        pl.BlockSpec((bk, H), lambda kv: (kv, 0)),      # K: iterate over blocks
+        pl.BlockSpec((bk, H), lambda kv: (kv, 0)),      # V: iterate over blocks
     ],
-    out_specs=pl.BlockSpec((bq4, H4), lambda kv: (0, 0)),
-    out_shape=jax.ShapeDtypeStruct((bq4, H4), jnp.float32),
+    out_specs=pl.BlockSpec((bq, H), lambda kv: (0, 0)),
+    out_shape=jax.ShapeDtypeStruct((bq, H), jnp.float32),
     scratch_shapes=[
-        pltpu.VMEM((bq4, H4), jnp.float32),    # acc
-        pltpu.VMEM((bq4,), jnp.float32),        # m
-        pltpu.VMEM((bq4,), jnp.float32),        # l
+        pltpu.VMEM((bq, H), jnp.float32),    # acc
+        pltpu.VMEM((bq,), jnp.float32),       # m
+        pltpu.VMEM((bq,), jnp.float32),       # l
     ],
     interpret=True,
-)(Q4, K4, V4)
+)(Q, K, V)
 
-if jnp.allclose(actual4, expected4, atol=1e-2, rtol=1e-2):
-    print(f"PASSED ✓  (shape={actual4.shape})")
+if jnp.allclose(actual, expected, atol=1e-2, rtol=1e-2):
+    print(f"PASSED ✓  (shape={actual.shape})")
 else:
-    diff4 = jnp.abs(actual4 - expected4)
-    print(f"FAILED ✗  max error: {float(jnp.max(diff4)):.6f}")
-    print(f"  Expected (first 2 rows):\n{expected4[:2, :8]}")
-    print(f"  Got      (first 2 rows):\n{actual4[:2, :8]}")
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected (first 2 rows):\n{expected[:2, :8]}")
+    print(f"  Got      (first 2 rows):\n{actual[:2, :8]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — Initialization and scores</summary>
@@ -699,26 +649,26 @@ else:
 # ```python
 # @pl.when(kv == 0)
 # def _init():
-#     acc_ref[...] = jnp.zeros((bq4, H4), dtype=jnp.float32)
-#     m_ref[...] = jnp.full((bq4,), -jnp.inf, dtype=jnp.float32)
-#     l_ref[...] = jnp.zeros((bq4,), dtype=jnp.float32)
+#     acc_ref[...] = jnp.zeros((bq, H), dtype=jnp.float32)
+#     m_ref[...] = jnp.full((bq,), -jnp.inf, dtype=jnp.float32)
+#     l_ref[...] = jnp.zeros((bq,), dtype=jnp.float32)
 #
 # q = q_ref[...]
 # k = k_ref[...]
 # v = v_ref[...]
-# s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H4).astype(jnp.float32)  # (bq4, bk4)
+# s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H).astype(jnp.float32)  # (bq, bk)
 # ```
 # </details>
 #
 # <details><summary>Hint 2 of 3 — Online softmax update with output correction</summary>
 #
 # ```python
-# m_tile = jnp.max(s, axis=-1)                    # (bq4,)
-# m_new = jnp.maximum(m_ref[...], m_tile)          # (bq4,)
-# corr = jnp.exp(m_ref[...] - m_new)               # (bq4,)
+# m_tile = jnp.max(s, axis=-1)                    # (bq,)
+# m_new = jnp.maximum(m_ref[...], m_tile)          # (bq,)
+# corr = jnp.exp(m_ref[...] - m_new)               # (bq,)
 #
 # acc_ref[...] = acc_ref[...] * corr[:, None]       # rescale old output
-# p = jnp.exp(s - m_new[:, None])                   # (bq4, bk4)
+# p = jnp.exp(s - m_new[:, None])                   # (bq, bk)
 # l_ref[...] = l_ref[...] * corr + p.sum(axis=-1)  # update sum_exp
 # acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)    # accumulate P @ V
 # m_ref[...] = m_new
@@ -734,14 +684,14 @@ else:
 #
 #     @pl.when(kv == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq4, H4), dtype=jnp.float32)
-#         m_ref[...] = jnp.full((bq4,), -jnp.inf, dtype=jnp.float32)
-#         l_ref[...] = jnp.zeros((bq4,), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq, H), dtype=jnp.float32)
+#         m_ref[...] = jnp.full((bq,), -jnp.inf, dtype=jnp.float32)
+#         l_ref[...] = jnp.zeros((bq,), dtype=jnp.float32)
 #
 #     q = q_ref[...]
 #     k = k_ref[...]
 #     v = v_ref[...]
-#     s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H4).astype(jnp.float32)
+#     s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H).astype(jnp.float32)
 #
 #     m_tile = jnp.max(s, axis=-1)
 #     m_new = jnp.maximum(m_ref[...], m_tile)
@@ -753,7 +703,7 @@ else:
 #     acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #     m_ref[...] = m_new
 #
-#     @pl.when(kv == tiles_kv4 - 1)
+#     @pl.when(kv == tiles_kv - 1)
 #     def _norm():
 #         o_ref[...] = acc_ref[...] / l_ref[...][:, None]
 # ```
@@ -812,16 +762,16 @@ else:
 
 
 # %%
-T5 = 128
-H5 = 64
-bq5 = 32
-bk5 = 32
-tiles_q5 = T5 // bq5
-tiles_kv5 = T5 // bk5
+T = 128
+H = 64
+bq = 32
+bk = 32
+tiles_q = T // bq
+tiles_kv = T // bk
 
-Q5 = jax.random.normal(jax.random.key(40), (T5, H5))
-K5 = jax.random.normal(jax.random.key(41), (T5, H5))
-V5 = jax.random.normal(jax.random.key(42), (T5, H5))
+Q = jax.random.normal(jax.random.key(40), (T, H))
+K = jax.random.normal(jax.random.key(41), (T, H))
+V = jax.random.normal(jax.random.key(42), (T, H))
 
 # --- Reference ---
 def flash_attention_spec(Q, K, V):
@@ -834,17 +784,17 @@ def flash_attention_spec(Q, K, V):
 
 # --- Kernel ---
 def flash_attention_kernel(
-    q_ref,      # (bq5, H5)
-    k_ref,      # (bk5, H5)
-    v_ref,      # (bk5, H5)
-    o_ref,      # (bq5, H5) — output
-    acc_ref,    # (bq5, H5) — scratch: accumulator
-    m_ref,      # (bq5,)    — scratch: running max
-    l_ref,      # (bq5,)    — scratch: running sum_exp
+    q_ref,      # (bq, H)
+    k_ref,      # (bk, H)
+    v_ref,      # (bk, H)
+    o_ref,      # (bq, H) — output
+    acc_ref,    # (bq, H) — scratch: accumulator
+    m_ref,      # (bq,)   — scratch: running max
+    l_ref,      # (bq,)   — scratch: running sum_exp
 ):
     """Flash attention kernel.
 
-    Grid: (tiles_q5, tiles_kv5)
+    Grid: (tiles_q, tiles_kv)
       - program_id(0) = i: which Q block
       - program_id(1) = kv: which KV block (reduction dimension)
     """
@@ -853,33 +803,44 @@ def flash_attention_kernel(
     # YOUR CODE HERE
     # Same pattern as Puzzle 4, but now:
     # - Use kv (not i) for the KV iteration
-    # - Init on kv == 0, normalize on kv == tiles_kv5 - 1
+    # - Init on kv == 0, normalize on kv == tiles_kv - 1
     # - The BlockSpecs handle routing Q by i, K/V by kv
 
 
 # %%
-check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
-      grid=(tiles_q5, tiles_kv5),
-      in_specs=[
-          pl.BlockSpec((bq5, H5), lambda i, kv: (i, 0)),    # Q: route by i
-          pl.BlockSpec((bk5, H5), lambda i, kv: (kv, 0)),   # K: route by kv
-          pl.BlockSpec((bk5, H5), lambda i, kv: (kv, 0)),   # V: route by kv
-      ],
-      out_specs=pl.BlockSpec((bq5, H5), lambda i, kv: (i, 0)),
-      out_shape=jax.ShapeDtypeStruct((T5, H5), jnp.float32),
-      scratch_shapes=[
-          pltpu.VMEM((bq5, H5), jnp.float32),   # acc
-          pltpu.VMEM((bq5,), jnp.float32),       # m
-          pltpu.VMEM((bq5,), jnp.float32),       # l
-      ],
-      atol=1e-2, rtol=1e-2)
+expected = flash_attention_spec(Q, K, V)
+actual = pl.pallas_call(
+    flash_attention_kernel,
+    grid=(tiles_q, tiles_kv),
+    in_specs=[
+        pl.BlockSpec((bq, H), lambda i, kv: (i, 0)),    # Q: route by i
+        pl.BlockSpec((bk, H), lambda i, kv: (kv, 0)),   # K: route by kv
+        pl.BlockSpec((bk, H), lambda i, kv: (kv, 0)),   # V: route by kv
+    ],
+    out_specs=pl.BlockSpec((bq, H), lambda i, kv: (i, 0)),
+    out_shape=jax.ShapeDtypeStruct((T, H), jnp.float32),
+    scratch_shapes=[
+        pltpu.VMEM((bq, H), jnp.float32),   # acc
+        pltpu.VMEM((bq,), jnp.float32),      # m
+        pltpu.VMEM((bq,), jnp.float32),      # l
+    ],
+    interpret=True,
+)(Q, K, V)
+
+if jnp.allclose(actual, expected, atol=1e-2, rtol=1e-2):
+    print(f"PASSED ✓  (shape={actual.shape})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected (first 2 rows):\n{expected[:2, :8]}")
+    print(f"  Got      (first 2 rows):\n{actual[:2, :8]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — It's Puzzle 4 with different program_id</summary>
 #
 # The kernel body is identical to Puzzle 4. Just:
 # - Use `kv = pl.program_id(1)` instead of `pl.program_id(0)`
-# - Init on `kv == 0`, normalize on `kv == tiles_kv5 - 1`
+# - Init on `kv == 0`, normalize on `kv == tiles_kv - 1`
 # - The BlockSpecs handle routing — you don't need to think about `i` inside the kernel
 # </details>
 #
@@ -893,14 +854,14 @@ check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
 #
 #     @pl.when(kv == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq5, H5), dtype=jnp.float32)
-#         m_ref[...] = jnp.full((bq5,), -jnp.inf, dtype=jnp.float32)
-#         l_ref[...] = jnp.zeros((bq5,), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq, H), dtype=jnp.float32)
+#         m_ref[...] = jnp.full((bq,), -jnp.inf, dtype=jnp.float32)
+#         l_ref[...] = jnp.zeros((bq,), dtype=jnp.float32)
 #
 #     q = q_ref[...]
 #     k = k_ref[...]
 #     v = v_ref[...]
-#     s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H5).astype(jnp.float32)
+#     s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H).astype(jnp.float32)
 #
 #     m_tile = jnp.max(s, axis=-1)
 #     m_new = jnp.maximum(m_ref[...], m_tile)
@@ -912,7 +873,7 @@ check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
 #     acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #     m_ref[...] = m_new
 #
-#     @pl.when(kv == tiles_kv5 - 1)
+#     @pl.when(kv == tiles_kv - 1)
 #     def _norm():
 #         o_ref[...] = acc_ref[...] / l_ref[...][:, None]
 # ```
@@ -982,16 +943,16 @@ check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
 
 
 # %%
-T6 = 128
-H6 = 64
-bq6 = 32
-bk6 = 32
-tiles_q6 = T6 // bq6
-tiles_kv6 = T6 // bk6
+T = 128
+H = 64
+bq = 32
+bk = 32
+tiles_q = T // bq
+tiles_kv = T // bk
 
-Q6 = jax.random.normal(jax.random.key(50), (T6, H6))
-K6 = jax.random.normal(jax.random.key(51), (T6, H6))
-V6 = jax.random.normal(jax.random.key(52), (T6, H6))
+Q = jax.random.normal(jax.random.key(50), (T, H))
+K = jax.random.normal(jax.random.key(51), (T, H))
+V = jax.random.normal(jax.random.key(52), (T, H))
 
 # --- Reference ---
 def causal_attention_spec(Q, K, V):
@@ -1012,10 +973,10 @@ def causal_flash_kernel(
 ):
     """Flash attention with causal masking.
 
-    Grid: (tiles_q6, tiles_kv6)
+    Grid: (tiles_q, tiles_kv)
 
     Block (i, kv) falls into one of two cases:
-    - SKIP: i * bq6 < kv * bk6 → entirely above diagonal, do nothing
+    - SKIP: i * bq < kv * bk → entirely above diagonal, do nothing
     - COMPUTE: otherwise → apply causal mask and do flash attention
       (the causal mask is all-True for blocks fully below the diagonal,
        so you don't need to special-case FULL vs PARTIAL)
@@ -1024,35 +985,46 @@ def causal_flash_kernel(
     kv = pl.program_id(1)
     # YOUR CODE HERE
     # 1. Init on kv == 0 (same as Puzzle 5)
-    # 2. Determine if this block should be skipped: i * bq6 < kv * bk6
+    # 2. Determine if this block should be skipped: i * bq < kv * bk
     # 3. @pl.when(should_compute): compute scores, apply causal mask,
     #    do online softmax update
     # 4. Normalize on last kv block
 
 
 # %%
-check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
-      grid=(tiles_q6, tiles_kv6),
-      in_specs=[
-          pl.BlockSpec((bq6, H6), lambda i, kv: (i, 0)),
-          pl.BlockSpec((bk6, H6), lambda i, kv: (kv, 0)),
-          pl.BlockSpec((bk6, H6), lambda i, kv: (kv, 0)),
-      ],
-      out_specs=pl.BlockSpec((bq6, H6), lambda i, kv: (i, 0)),
-      out_shape=jax.ShapeDtypeStruct((T6, H6), jnp.float32),
-      scratch_shapes=[
-          pltpu.VMEM((bq6, H6), jnp.float32),
-          pltpu.VMEM((bq6,), jnp.float32),
-          pltpu.VMEM((bq6,), jnp.float32),
-      ],
-      atol=1e-2, rtol=1e-2)
+expected = causal_attention_spec(Q, K, V)
+actual = pl.pallas_call(
+    causal_flash_kernel,
+    grid=(tiles_q, tiles_kv),
+    in_specs=[
+        pl.BlockSpec((bq, H), lambda i, kv: (i, 0)),
+        pl.BlockSpec((bk, H), lambda i, kv: (kv, 0)),
+        pl.BlockSpec((bk, H), lambda i, kv: (kv, 0)),
+    ],
+    out_specs=pl.BlockSpec((bq, H), lambda i, kv: (i, 0)),
+    out_shape=jax.ShapeDtypeStruct((T, H), jnp.float32),
+    scratch_shapes=[
+        pltpu.VMEM((bq, H), jnp.float32),
+        pltpu.VMEM((bq,), jnp.float32),
+        pltpu.VMEM((bq,), jnp.float32),
+    ],
+    interpret=True,
+)(Q, K, V)
+
+if jnp.allclose(actual, expected, atol=1e-2, rtol=1e-2):
+    print(f"PASSED ✓  (shape={actual.shape})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected (first 2 rows):\n{expected[:2, :8]}")
+    print(f"  Got      (first 2 rows):\n{actual[:2, :8]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — Block classification</summary>
 #
 # ```python
-# should_compute = (i * bq6 >= kv * bk6)    # not above diagonal
-# is_full = ((i + 1) * bq6 > (kv + 1) * bk6)  # entirely below diagonal
+# should_compute = (i * bq >= kv * bk)    # not above diagonal
+# is_full = ((i + 1) * bq > (kv + 1) * bk)  # entirely below diagonal
 # ```
 # When `should_compute` is False, the block is fully masked — skip it.
 # When `is_full` is True, no per-element mask needed.
@@ -1062,8 +1034,8 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 #
 # For partial (diagonal) blocks, create the mask with global indices:
 # ```python
-# q_idx = i * bq6 + jnp.arange(bq6)[:, None]
-# kv_idx = kv * bk6 + jnp.arange(bk6)[None, :]
+# q_idx = i * bq + jnp.arange(bq)[:, None]
+# kv_idx = kv * bk + jnp.arange(bk)[None, :]
 # causal_mask = q_idx >= kv_idx
 # s = jnp.where(causal_mask, s, -jnp.inf)
 # ```
@@ -1082,22 +1054,22 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 #
 #     @pl.when(kv == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq6, H6), dtype=jnp.float32)
-#         m_ref[...] = jnp.full((bq6,), -jnp.inf, dtype=jnp.float32)
-#         l_ref[...] = jnp.zeros((bq6,), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq, H), dtype=jnp.float32)
+#         m_ref[...] = jnp.full((bq,), -jnp.inf, dtype=jnp.float32)
+#         l_ref[...] = jnp.zeros((bq,), dtype=jnp.float32)
 #
-#     should_compute = (i * bq6 >= kv * bk6)
+#     should_compute = (i * bq >= kv * bk)
 #
 #     @pl.when(should_compute)
 #     def _compute():
 #         q = q_ref[...]
 #         k = k_ref[...]
 #         v = v_ref[...]
-#         s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H6).astype(jnp.float32)
+#         s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H).astype(jnp.float32)
 #
 #         # Apply causal mask for partial blocks
-#         q_idx = i * bq6 + jnp.arange(bq6)[:, None]
-#         kv_idx = kv * bk6 + jnp.arange(bk6)[None, :]
+#         q_idx = i * bq + jnp.arange(bq)[:, None]
+#         kv_idx = kv * bk + jnp.arange(bk)[None, :]
 #         causal_mask = q_idx >= kv_idx
 #         s = jnp.where(causal_mask, s, -jnp.inf)
 #
@@ -1111,7 +1083,7 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 #         acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #         m_ref[...] = m_new
 #
-#     @pl.when(kv == tiles_kv6 - 1)
+#     @pl.when(kv == tiles_kv - 1)
 #     def _norm():
 #         o_ref[...] = acc_ref[...] / l_ref[...][:, None]
 # ```
@@ -1177,47 +1149,47 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 # production-grade dispatch.
 
 # %%
-T7 = 128
-H7 = 64
-bq7 = 32
-bk7 = 32
-tiles_q7 = T7 // bq7
-tiles_kv7 = T7 // bk7
+T = 128
+H = 64
+bq = 32
+bk = 32
+tiles_q = T // bq
+tiles_kv = T // bk
 
-Q7 = jax.random.normal(jax.random.key(60), (T7, H7))
-K7 = jax.random.normal(jax.random.key(61), (T7, H7))
-V7 = jax.random.normal(jax.random.key(62), (T7, H7))
+Q = jax.random.normal(jax.random.key(60), (T, H))
+K = jax.random.normal(jax.random.key(61), (T, H))
+V = jax.random.normal(jax.random.key(62), (T, H))
 
 # --- Build causal block_mask ---
 # 0 = SKIP, 1 = PARTIAL (diagonal), 2 = FULL (below diagonal)
-block_mask7 = jnp.zeros((tiles_q7, tiles_kv7), dtype=jnp.int32)
-for qi in range(tiles_q7):
-    for kvi in range(tiles_kv7):
-        if qi * bq7 < kvi * bk7:
-            block_mask7 = block_mask7.at[qi, kvi].set(0)    # SKIP
-        elif (qi + 1) * bq7 > (kvi + 1) * bk7:
-            block_mask7 = block_mask7.at[qi, kvi].set(2)    # FULL
+block_mask = jnp.zeros((tiles_q, tiles_kv), dtype=jnp.int32)
+for qi in range(tiles_q):
+    for kvi in range(tiles_kv):
+        if qi * bq < kvi * bk:
+            block_mask = block_mask.at[qi, kvi].set(0)    # SKIP
+        elif (qi + 1) * bq > (kvi + 1) * bk:
+            block_mask = block_mask.at[qi, kvi].set(2)    # FULL
         else:
-            block_mask7 = block_mask7.at[qi, kvi].set(1)    # PARTIAL
+            block_mask = block_mask.at[qi, kvi].set(1)    # PARTIAL
 
-print("block_mask7:")
-print(block_mask7)
+print("block_mask:")
+print(block_mask)
 
 # --- Build partial mask blocks ---
 # For each diagonal block, precompute the per-element causal mask.
 # We store them as a list indexed by the diagonal block number.
-num_partial7 = int(min(tiles_q7, tiles_kv7))
-partial_masks7 = jnp.zeros((num_partial7, bq7, bk7), dtype=jnp.bool_)
+num_partial = int(min(tiles_q, tiles_kv))
+partial_masks = jnp.zeros((num_partial, bq, bk), dtype=jnp.bool_)
 partial_idx = 0
-for qi in range(tiles_q7):
-    for kvi in range(tiles_kv7):
-        if int(block_mask7[qi, kvi]) == 1:
-            q_idx = qi * bq7 + jnp.arange(bq7)[:, None]
-            kv_idx = kvi * bk7 + jnp.arange(bk7)[None, :]
-            partial_masks7 = partial_masks7.at[partial_idx].set(q_idx >= kv_idx)
+for qi in range(tiles_q):
+    for kvi in range(tiles_kv):
+        if int(block_mask[qi, kvi]) == 1:
+            q_idx = qi * bq + jnp.arange(bq)[:, None]
+            kv_idx = kvi * bk + jnp.arange(bk)[None, :]
+            partial_masks = partial_masks.at[partial_idx].set(q_idx >= kv_idx)
             partial_idx += 1
 
-print(f"\npartial_masks7 shape: {partial_masks7.shape} ({partial_idx} partial blocks)")
+print(f"\npartial_masks shape: {partial_masks.shape} ({partial_idx} partial blocks)")
 
 
 # --- Reference ---
@@ -1229,11 +1201,11 @@ def block_sparse_attention_spec(Q, K, V, block_mask, partial_masks):
     # Reconstruct full mask from block_mask + partial_masks
     full_mask = jnp.zeros((T, T), dtype=jnp.bool_)
     pidx = 0
-    for qi in range(tiles_q7):
-        for kvi in range(tiles_kv7):
+    for qi in range(tiles_q):
+        for kvi in range(tiles_kv):
             bm = int(block_mask[qi, kvi])
-            r0, r1 = qi * bq7, (qi + 1) * bq7
-            c0, c1 = kvi * bk7, (kvi + 1) * bk7
+            r0, r1 = qi * bq, (qi + 1) * bq
+            c0, c1 = kvi * bk, (kvi + 1) * bk
             if bm == 2:
                 full_mask = full_mask.at[r0:r1, c0:c1].set(True)
             elif bm == 1:
@@ -1247,14 +1219,14 @@ def block_sparse_attention_spec(Q, K, V, block_mask, partial_masks):
 # --- Kernel ---
 def block_sparse_flash_kernel(
     q_ref, k_ref, v_ref,
-    block_mask_ref,        # (tiles_kv7,) — mask row for this Q block
-    partial_masks_ref,     # (num_partial7, bq7, bk7) — all partial masks
+    block_mask_ref,        # (tiles_kv,) — mask row for this Q block
+    partial_masks_ref,     # (num_partial, bq, bk) — all partial masks
     o_ref,
     acc_ref, m_ref, l_ref,
 ):
     """Flash attention with block-sparse mask from block_mask array.
 
-    Grid: (tiles_q7, tiles_kv7)
+    Grid: (tiles_q, tiles_kv)
 
     block_mask_ref: row of block_mask for current Q block
       - 0 = skip, 1 = partial, 2 = full
@@ -1272,39 +1244,39 @@ def block_sparse_flash_kernel(
 
 
 # %%
-expected7 = block_sparse_attention_spec(Q7, K7, V7, block_mask7, partial_masks7)
+expected = block_sparse_attention_spec(Q, K, V, block_mask, partial_masks)
 
 # For partial block indexing, we need to know which partial mask index
 # corresponds to each diagonal block. For causal: block (i,i) is the
 # i-th partial block.
 # We pass block_mask row-by-row via BlockSpec.
-actual7 = pl.pallas_call(
+actual = pl.pallas_call(
     block_sparse_flash_kernel,
-    grid=(tiles_q7, tiles_kv7),
+    grid=(tiles_q, tiles_kv),
     in_specs=[
-        pl.BlockSpec((bq7, H7), lambda i, kv: (i, 0)),              # Q
-        pl.BlockSpec((bk7, H7), lambda i, kv: (kv, 0)),             # K
-        pl.BlockSpec((bk7, H7), lambda i, kv: (kv, 0)),             # V
-        pl.BlockSpec((tiles_kv7,), lambda i, kv: (i,)),             # block_mask row
-        pl.BlockSpec(memory_space=pl.ANY),                           # partial_masks (full)
+        pl.BlockSpec((bq, H), lambda i, kv: (i, 0)),              # Q
+        pl.BlockSpec((bk, H), lambda i, kv: (kv, 0)),             # K
+        pl.BlockSpec((bk, H), lambda i, kv: (kv, 0)),             # V
+        pl.BlockSpec((tiles_kv,), lambda i, kv: (i,)),            # block_mask row
+        pl.BlockSpec(memory_space=pl.ANY),                          # partial_masks (full)
     ],
-    out_specs=pl.BlockSpec((bq7, H7), lambda i, kv: (i, 0)),
-    out_shape=jax.ShapeDtypeStruct((T7, H7), jnp.float32),
+    out_specs=pl.BlockSpec((bq, H), lambda i, kv: (i, 0)),
+    out_shape=jax.ShapeDtypeStruct((T, H), jnp.float32),
     scratch_shapes=[
-        pltpu.VMEM((bq7, H7), jnp.float32),
-        pltpu.VMEM((bq7,), jnp.float32),
-        pltpu.VMEM((bq7,), jnp.float32),
+        pltpu.VMEM((bq, H), jnp.float32),
+        pltpu.VMEM((bq,), jnp.float32),
+        pltpu.VMEM((bq,), jnp.float32),
     ],
     interpret=True,
-)(Q7, K7, V7, block_mask7, partial_masks7)
+)(Q, K, V, block_mask, partial_masks)
 
-if jnp.allclose(actual7, expected7, atol=1e-2, rtol=1e-2):
-    print(f"PASSED ✓  (shape={actual7.shape})")
+if jnp.allclose(actual, expected, atol=1e-2, rtol=1e-2):
+    print(f"PASSED ✓  (shape={actual.shape})")
 else:
-    diff7 = jnp.abs(actual7 - expected7)
-    print(f"FAILED ✗  max error: {float(jnp.max(diff7)):.6f}")
-    print(f"  Expected (first 2 rows):\n{expected7[:2, :8]}")
-    print(f"  Got      (first 2 rows):\n{actual7[:2, :8]}")
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected (first 2 rows):\n{expected[:2, :8]}")
+    print(f"  Got      (first 2 rows):\n{actual[:2, :8]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — Reading the block mask</summary>
@@ -1322,7 +1294,7 @@ else:
 # For causal masking, the diagonal block for Q block `i` is always the
 # `i`-th partial mask (one partial block per row, on the diagonal):
 # ```python
-# mask = partial_masks_ref[i]  # (bq7, bk7) boolean mask
+# mask = partial_masks_ref[i]  # (bq, bk) boolean mask
 # s = jnp.where(mask, s, -jnp.inf)
 # ```
 # For the full case, skip the mask step (or use `True` mask).
@@ -1340,9 +1312,9 @@ else:
 #
 #     @pl.when(kv == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq7, H7), dtype=jnp.float32)
-#         m_ref[...] = jnp.full((bq7,), -jnp.inf, dtype=jnp.float32)
-#         l_ref[...] = jnp.zeros((bq7,), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq, H), dtype=jnp.float32)
+#         m_ref[...] = jnp.full((bq,), -jnp.inf, dtype=jnp.float32)
+#         l_ref[...] = jnp.zeros((bq,), dtype=jnp.float32)
 #
 #     block_type = block_mask_ref[kv]
 #     should_compute = block_type > 0
@@ -1352,7 +1324,7 @@ else:
 #         q = q_ref[...]
 #         k = k_ref[...]
 #         v = v_ref[...]
-#         s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H7).astype(jnp.float32)
+#         s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H).astype(jnp.float32)
 #
 #         # Apply partial mask for diagonal blocks.
 #         # For causal: block i has partial mask i (one per Q row).
@@ -1371,7 +1343,7 @@ else:
 #         acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #         m_ref[...] = m_new
 #
-#     @pl.when(kv == tiles_kv7 - 1)
+#     @pl.when(kv == tiles_kv - 1)
 #     def _norm():
 #         o_ref[...] = acc_ref[...] / l_ref[...][:, None]
 # ```
@@ -1433,64 +1405,64 @@ else:
 
 
 # %%
-T8 = 128
-H8 = 64
-bq8 = 32
-bk8 = 32
-tiles_q8 = T8 // bq8
-tiles_kv8 = T8 // bk8
+T = 128
+H = 64
+bq = 32
+bk = 32
+tiles_q = T // bq
+tiles_kv = T // bk
 
-Q8 = jax.random.normal(jax.random.key(70), (T8, H8))
-K8 = jax.random.normal(jax.random.key(71), (T8, H8))
-V8 = jax.random.normal(jax.random.key(72), (T8, H8))
+Q = jax.random.normal(jax.random.key(70), (T, H))
+K = jax.random.normal(jax.random.key(71), (T, H))
+V = jax.random.normal(jax.random.key(72), (T, H))
 
 # --- Build causal block_mask (same as Puzzle 7) ---
-block_mask8 = jnp.zeros((tiles_q8, tiles_kv8), dtype=jnp.int32)
-for qi in range(tiles_q8):
-    for kvi in range(tiles_kv8):
-        if qi * bq8 < kvi * bk8:
-            block_mask8 = block_mask8.at[qi, kvi].set(0)
-        elif (qi + 1) * bq8 > (kvi + 1) * bk8:
-            block_mask8 = block_mask8.at[qi, kvi].set(2)
+block_mask = jnp.zeros((tiles_q, tiles_kv), dtype=jnp.int32)
+for qi in range(tiles_q):
+    for kvi in range(tiles_kv):
+        if qi * bq < kvi * bk:
+            block_mask = block_mask.at[qi, kvi].set(0)
+        elif (qi + 1) * bq > (kvi + 1) * bk:
+            block_mask = block_mask.at[qi, kvi].set(2)
         else:
-            block_mask8 = block_mask8.at[qi, kvi].set(1)
+            block_mask = block_mask.at[qi, kvi].set(1)
 
 # --- Build compacted iteration maps ---
 # For each Q block, list the non-skip KV blocks in order
-grid_width8 = 0
-for qi in range(tiles_q8):
-    count = int(jnp.sum(block_mask8[qi] > 0))
-    grid_width8 = max(grid_width8, count)
+grid_width = 0
+for qi in range(tiles_q):
+    count = int(jnp.sum(block_mask[qi] > 0))
+    grid_width = max(grid_width, count)
 
 # data_next[i, step] = which KV block to process at step `step`
 # mask_next[i, step] = block type at that step
-data_next8 = jnp.zeros((tiles_q8, grid_width8), dtype=jnp.int32)
-mask_next8 = jnp.zeros((tiles_q8, grid_width8), dtype=jnp.int32)
+data_next = jnp.zeros((tiles_q, grid_width), dtype=jnp.int32)
+mask_next = jnp.zeros((tiles_q, grid_width), dtype=jnp.int32)
 
-for qi in range(tiles_q8):
+for qi in range(tiles_q):
     step = 0
-    for kvi in range(tiles_kv8):
-        if int(block_mask8[qi, kvi]) > 0:
-            data_next8 = data_next8.at[qi, step].set(kvi)
-            mask_next8 = mask_next8.at[qi, step].set(int(block_mask8[qi, kvi]))
+    for kvi in range(tiles_kv):
+        if int(block_mask[qi, kvi]) > 0:
+            data_next = data_next.at[qi, step].set(kvi)
+            mask_next = mask_next.at[qi, step].set(int(block_mask[qi, kvi]))
             step += 1
 
-print(f"block_mask8:\n{block_mask8}")
-print(f"\ndata_next8 (kv indices per step):\n{data_next8}")
-print(f"\nmask_next8 (block types per step):\n{mask_next8}")
-print(f"\ngrid_width8: {grid_width8} (max non-skip blocks per Q block)")
+print(f"block_mask:\n{block_mask}")
+print(f"\ndata_next (kv indices per step):\n{data_next}")
+print(f"\nmask_next (block types per step):\n{mask_next}")
+print(f"\ngrid_width: {grid_width} (max non-skip blocks per Q block)")
 
 # --- Build partial masks ---
-num_partial8 = int(min(tiles_q8, tiles_kv8))
-partial_masks8 = jnp.zeros((num_partial8, bq8, bk8), dtype=jnp.bool_)
-pidx8 = 0
-for qi in range(tiles_q8):
-    for kvi in range(tiles_kv8):
-        if int(block_mask8[qi, kvi]) == 1:
-            q_idx = qi * bq8 + jnp.arange(bq8)[:, None]
-            kv_idx = kvi * bk8 + jnp.arange(bk8)[None, :]
-            partial_masks8 = partial_masks8.at[pidx8].set(q_idx >= kv_idx)
-            pidx8 += 1
+num_partial = int(min(tiles_q, tiles_kv))
+partial_masks = jnp.zeros((num_partial, bq, bk), dtype=jnp.bool_)
+pidx = 0
+for qi in range(tiles_q):
+    for kvi in range(tiles_kv):
+        if int(block_mask[qi, kvi]) == 1:
+            q_idx = qi * bq + jnp.arange(bq)[:, None]
+            kv_idx = kvi * bk + jnp.arange(bk)[None, :]
+            partial_masks = partial_masks.at[pidx].set(q_idx >= kv_idx)
+            pidx += 1
 
 
 # --- Reference ---
@@ -1522,20 +1494,20 @@ def o_index_map(i, step, data_next_ref, mask_next_ref):
 
 # --- Kernel ---
 def splash_attention_kernel(
-    data_next_ref,       # (tiles_q8, grid_width8) — scalar prefetch
-    mask_next_ref,       # (tiles_q8, grid_width8) — scalar prefetch
-    q_ref,               # (bq8, H8) — Q block
-    k_ref,               # (bk8, H8) — KV block (routed by data_next)
-    v_ref,               # (bk8, H8) — KV block (routed by data_next)
-    partial_masks_ref,   # (num_partial8, bq8, bk8) — all partial masks
-    o_ref,               # (bq8, H8) — output
-    acc_ref,             # (bq8, H8) — scratch
-    m_ref,               # (bq8,) — scratch
-    l_ref,               # (bq8,) — scratch
+    data_next_ref,       # (tiles_q, grid_width) — scalar prefetch
+    mask_next_ref,       # (tiles_q, grid_width) — scalar prefetch
+    q_ref,               # (bq, H) — Q block
+    k_ref,               # (bk, H) — KV block (routed by data_next)
+    v_ref,               # (bk, H) — KV block (routed by data_next)
+    partial_masks_ref,   # (num_partial, bq, bk) — all partial masks
+    o_ref,               # (bq, H) — output
+    acc_ref,             # (bq, H) — scratch
+    m_ref,               # (bq,) — scratch
+    l_ref,               # (bq,) — scratch
 ):
     """Splash attention kernel with compacted block-sparse iteration.
 
-    Grid: (tiles_q8, grid_width8)
+    Grid: (tiles_q, grid_width)
       - program_id(0) = i: Q block index
       - program_id(1) = step: compacted iteration step
 
@@ -1550,44 +1522,44 @@ def splash_attention_kernel(
     # 3. @pl.when(block_type > 0): flash attention with optional mask
     #    - K,V are already routed to the right block by the index map!
     #    - For partial blocks, look up mask from partial_masks_ref[i]
-    # 4. Normalize on step == grid_width8 - 1
+    # 4. Normalize on step == grid_width - 1
 
 
 # %%
-expected8 = splash_attention_spec(Q8, K8, V8, data_next8, mask_next8, partial_masks8)
+expected = splash_attention_spec(Q, K, V, data_next, mask_next, partial_masks)
 
-actual8 = pl.pallas_call(
+actual = pl.pallas_call(
     splash_attention_kernel,
     grid_spec=pltpu.PrefetchScalarGridSpec(
         num_scalar_prefetch=2,   # data_next and mask_next
         in_specs=[
-            pl.BlockSpec((bq8, H8), q_index_map),              # Q
-            pl.BlockSpec((bk8, H8), kv_index_map),             # K (routed!)
-            pl.BlockSpec((bk8, H8), kv_index_map),             # V (routed!)
-            pl.BlockSpec(memory_space=pl.ANY),                  # partial_masks (full)
+            pl.BlockSpec((bq, H), q_index_map),              # Q
+            pl.BlockSpec((bk, H), kv_index_map),             # K (routed!)
+            pl.BlockSpec((bk, H), kv_index_map),             # V (routed!)
+            pl.BlockSpec(memory_space=pl.ANY),                 # partial_masks (full)
         ],
-        out_specs=pl.BlockSpec((bq8, H8), o_index_map),
+        out_specs=pl.BlockSpec((bq, H), o_index_map),
         scratch_shapes=[
-            pltpu.VMEM((bq8, H8), jnp.float32),   # acc
-            pltpu.VMEM((bq8,), jnp.float32),       # m
-            pltpu.VMEM((bq8,), jnp.float32),       # l
+            pltpu.VMEM((bq, H), jnp.float32),   # acc
+            pltpu.VMEM((bq,), jnp.float32),      # m
+            pltpu.VMEM((bq,), jnp.float32),      # l
         ],
-        grid=(tiles_q8, grid_width8),
+        grid=(tiles_q, grid_width),
     ),
     interpret=True,
-)(data_next8, mask_next8, Q8, K8, V8, partial_masks8)
+)(data_next, mask_next, Q, K, V, partial_masks)
 
-if jnp.allclose(actual8, expected8, atol=1e-2, rtol=1e-2):
-    print(f"PASSED ✓  (shape={actual8.shape})")
+if jnp.allclose(actual, expected, atol=1e-2, rtol=1e-2):
+    print(f"PASSED ✓  (shape={actual.shape})")
     print(f"\n🎉 Congratulations! You've built splash attention from scratch!")
-    print(f"   Grid: ({tiles_q8}, {grid_width8}) instead of ({tiles_q8}, {tiles_kv8})")
-    print(f"   Skipped {tiles_q8 * tiles_kv8 - tiles_q8 * grid_width8} "
-          f"of {tiles_q8 * tiles_kv8} total block pairs")
+    print(f"   Grid: ({tiles_q}, {grid_width}) instead of ({tiles_q}, {tiles_kv})")
+    print(f"   Skipped {tiles_q * tiles_kv - tiles_q * grid_width} "
+          f"of {tiles_q * tiles_kv} total block pairs")
 else:
-    diff8 = jnp.abs(actual8 - expected8)
-    print(f"FAILED ✗  max error: {float(jnp.max(diff8)):.6f}")
-    print(f"  Expected (first 2 rows):\n{expected8[:2, :8]}")
-    print(f"  Got      (first 2 rows):\n{actual8[:2, :8]}")
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected (first 2 rows):\n{expected[:2, :8]}")
+    print(f"  Got      (first 2 rows):\n{actual[:2, :8]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — The kernel is similar to Puzzle 7</summary>
@@ -1595,7 +1567,7 @@ else:
 # The main differences from Puzzle 7:
 # - K,V are already loaded for the correct block (index maps handle routing)
 # - Read block type from `mask_next_ref[i, step]` instead of `block_mask_ref[kv]`
-# - Init/normalize on `step == 0` and `step == grid_width8 - 1`
+# - Init/normalize on `step == 0` and `step == grid_width - 1`
 # - No wasted iterations — every step does useful work (unless padded)
 # </details>
 #
@@ -1617,9 +1589,9 @@ else:
 #
 #     @pl.when(step == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq8, H8), dtype=jnp.float32)
-#         m_ref[...] = jnp.full((bq8,), -jnp.inf, dtype=jnp.float32)
-#         l_ref[...] = jnp.zeros((bq8,), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq, H), dtype=jnp.float32)
+#         m_ref[...] = jnp.full((bq,), -jnp.inf, dtype=jnp.float32)
+#         l_ref[...] = jnp.zeros((bq,), dtype=jnp.float32)
 #
 #     block_type = mask_next_ref[i, step]
 #     should_compute = block_type > 0
@@ -1629,7 +1601,7 @@ else:
 #         q = q_ref[...]
 #         k = k_ref[...]
 #         v = v_ref[...]
-#         s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H8).astype(jnp.float32)
+#         s = jnp.einsum('qh,kh->qk', q, k) / jnp.sqrt(H).astype(jnp.float32)
 #
 #         # For causal: Q block i → partial mask i (one per row)
 #         is_partial = (block_type == 1)
@@ -1646,7 +1618,7 @@ else:
 #         acc_ref[...] += jnp.einsum('qk,kh->qh', p, v)
 #         m_ref[...] = m_new
 #
-#     @pl.when(step == grid_width8 - 1)
+#     @pl.when(step == grid_width - 1)
 #     def _norm():
 #         o_ref[...] = acc_ref[...] / l_ref[...][:, None]
 # ```

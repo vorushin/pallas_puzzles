@@ -41,63 +41,11 @@
 # !pip install -q jax jaxtyping
 
 # %%
-import functools
 import jax
 import jax.numpy as jnp
-from jax import lax
 from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 print(f"JAX {jax.__version__}")
-
-# %%
-def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
-          out_shape=None, scratch_shapes=(), atol=1e-3, rtol=1e-3, **kwargs):
-    """Run a Pallas kernel in interpret mode and compare against a reference spec.
-
-    Args:
-        kernel_fn: The Pallas kernel to test.
-        spec_fn: Reference function computing the expected output in pure JAX.
-        inputs: Tuple of input arrays.
-        grid: Pallas grid tuple.
-        in_specs: List of BlockSpec for inputs (None = no blocking).
-        out_specs: BlockSpec for output (None = no blocking).
-        out_shape: jax.ShapeDtypeStruct for the output.
-        scratch_shapes: Scratch memory specs (empty by default).
-        atol, rtol: Tolerance for comparison.
-        **kwargs: Extra args to pl.pallas_call.
-    """
-    expected = spec_fn(*inputs)
-    if out_shape is None:
-        out_shape = jax.ShapeDtypeStruct(expected.shape, expected.dtype)
-
-    # Handle default specs
-    if in_specs is None:
-        in_specs = [pl.BlockSpec(memory_space=pl.ANY)] * len(inputs)
-    if out_specs is None:
-        out_specs = pl.BlockSpec(memory_space=pl.ANY)
-
-    actual = pl.pallas_call(
-        kernel_fn,
-        grid=grid,
-        in_specs=in_specs,
-        out_specs=out_specs,
-        out_shape=out_shape,
-        scratch_shapes=scratch_shapes,
-        interpret=True,
-        **kwargs,
-    )(*inputs)
-
-    if jnp.allclose(actual, expected, atol=atol, rtol=rtol):
-        print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
-    else:
-        diff = jnp.abs(actual - expected)
-        max_err = float(jnp.max(diff))
-        worst_idx = jnp.unravel_index(jnp.argmax(diff), diff.shape)
-        print(f"FAILED ✗  max error: {max_err:.6f} at index {tuple(int(i) for i in worst_idx)}")
-        n = min(4, expected.shape[0])
-        print(f"  Expected (first {n}):\n{expected[:n]}")
-        print(f"  Got      (first {n}):\n{actual[:n]}")
-
 
 # %% [markdown]
 # ---
@@ -140,66 +88,65 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 # production kernels use.
 #
 # **Note**: From this point on, puzzles use `grid_spec=` instead of
-# `grid=`, so the `check` helper from earlier won't work. The checking
-# code is inline instead.
+# `grid=` for `PrefetchScalarGridSpec`.
 
 # %%
-G1 = 4
-M1, K1, N1 = 64, 64, 64
+G = 4
+M, K, N = 64, 64, 64
 
 # --- Reference ---
 def permuted_matmul_spec(lhs, rhs, perm):
     """lhs: (G, M, K), rhs: (G, K, N), perm: (G,) → (G, M, N)
     out[i] = lhs[i] @ rhs[perm[i]]
     """
-    return jnp.stack([lhs[i] @ rhs[perm[i]] for i in range(G1)])
+    return jnp.stack([lhs[i] @ rhs[perm[i]] for i in range(G)])
 
 # --- Kernel skeleton ---
 def permuted_matmul_kernel(perm_ref, lhs_ref, rhs_ref, o_ref):
     # perm_ref: scalar-prefetched permutation array (in SMEM)
-    # lhs_ref: (M1, K1) — current group's lhs
-    # rhs_ref: (K1, N1) — permuted group's rhs (loaded via index map)
-    # o_ref: (M1, N1) — output tile
+    # lhs_ref: (M, K) — current group's lhs
+    # rhs_ref: (K, N) — permuted group's rhs (loaded via index map)
+    # o_ref: (M, N) — output tile
     # YOUR CODE HERE
 
 
 # --- Index maps ---
-def lhs_index_map1(g, perm_ref):
+def lhs_index_map(g, perm_ref):
     return (g, 0, 0)
 
-def rhs_index_map1(g, perm_ref):
+def rhs_index_map(g, perm_ref):
     # Use the scalar-prefetched perm to look up which rhs group to load
     return (perm_ref[g], 0, 0)
 
-def out_index_map1(g, perm_ref):
+def out_index_map(g, perm_ref):
     return (g, 0, 0)
 
 # %%
-lhs1 = jax.random.normal(jax.random.key(14), (G1, M1, K1))
-rhs1 = jax.random.normal(jax.random.key(15), (G1, K1, N1))
-perm1 = jnp.array([2, 0, 3, 1], dtype=jnp.int32)  # permutation
+lhs = jax.random.normal(jax.random.key(14), (G, M, K))
+rhs = jax.random.normal(jax.random.key(15), (G, K, N))
+perm = jnp.array([2, 0, 3, 1], dtype=jnp.int32)  # permutation
 
-expected1 = permuted_matmul_spec(lhs1, rhs1, perm1)
+expected = permuted_matmul_spec(lhs, rhs, perm)
 
-actual1 = pl.pallas_call(
+actual = pl.pallas_call(
     permuted_matmul_kernel,
     grid_spec=pltpu.PrefetchScalarGridSpec(
         num_scalar_prefetch=1,
         in_specs=[
-            pl.BlockSpec((None, M1, K1), lhs_index_map1),
-            pl.BlockSpec((None, K1, N1), rhs_index_map1),
+            pl.BlockSpec((None, M, K), lhs_index_map),
+            pl.BlockSpec((None, K, N), rhs_index_map),
         ],
-        out_specs=pl.BlockSpec((None, M1, N1), out_index_map1),
-        grid=(G1,),
+        out_specs=pl.BlockSpec((None, M, N), out_index_map),
+        grid=(G,),
     ),
-    out_shape=jax.ShapeDtypeStruct((G1, M1, N1), jnp.float32),
+    out_shape=jax.ShapeDtypeStruct((G, M, N), jnp.float32),
     interpret=True,
-)(perm1, lhs1, rhs1)
+)(perm, lhs, rhs)
 
-if jnp.allclose(actual1, expected1, atol=1e-3):
-    print(f"PASSED ✓  (shape={actual1.shape})")
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape})")
 else:
-    max_err = float(jnp.max(jnp.abs(actual1 - expected1)))
+    max_err = float(jnp.max(jnp.abs(actual - expected)))
     print(f"FAILED ✗  max error: {max_err:.6f}")
 
 # %% [markdown]
@@ -644,13 +591,13 @@ check_metadata("Zero-size group (non-aligned)",
 #   regular inputs.
 
 # %%
-M3, N3 = 1024, 64
-bm3 = 128
-G3 = 3
+M, N = 1024, 64
+bm = 128
+G = 3
 
-group_sizes_3 = jnp.array([300, 212, 512], dtype=jnp.int32)
-(group_offsets_3, group_ids_3, m_tile_ids_3), num_tiles_3 = \
-    make_group_metadata_reference(group_sizes_3, M3, bm3)
+group_sizes = jnp.array([300, 212, 512], dtype=jnp.int32)
+(group_offsets, group_ids, m_tile_ids), num_tiles = \
+    make_group_metadata_reference(group_sizes, M, bm)
 
 # The kernel is provided (solved):
 def masked_copy_kernel_solved(group_offsets_ref, group_ids_ref, m_tile_ids_ref,
@@ -661,22 +608,22 @@ def masked_copy_kernel_solved(group_offsets_ref, group_ids_ref, m_tile_ids_ref,
     m_tile = m_tile_ids_ref[grid_id]
     group_start = group_offsets_ref[group_id]
     group_end = group_offsets_ref[group_id + 1]
-    tile_start = m_tile * bm3
+    tile_start = m_tile * bm
 
-    row_ids = tile_start + jax.lax.broadcasted_iota(jnp.int32, (bm3, N3), 0)
+    row_ids = tile_start + jax.lax.broadcasted_iota(jnp.int32, (bm, N), 0)
     mask = (row_ids >= group_start) & (row_ids < group_end)
     o_ref[...] = jnp.where(mask, x_ref[...], o_ref[...])
 
 # Reference spec
-def masked_copy_spec_3(x, group_offsets, group_ids, m_tile_ids):
+def masked_copy_spec(x, group_offsets, group_ids, m_tile_ids):
     out = jnp.zeros_like(x)
-    for grid_id in range(num_tiles_3):
+    for grid_id in range(num_tiles):
         g = int(group_ids[grid_id])
         tile_id = int(m_tile_ids[grid_id])
         g_start = int(group_offsets[g])
         g_end = int(group_offsets[g + 1])
-        t_start = tile_id * bm3
-        t_end = t_start + bm3
+        t_start = tile_id * bm
+        t_end = t_start + bm
         for row in range(t_start, t_end):
             if g_start <= row < g_end:
                 out = out.at[row].set(x[row])
@@ -684,8 +631,8 @@ def masked_copy_spec_3(x, group_offsets, group_ids, m_tile_ids):
 
 
 # %%
-x3 = jax.random.normal(jax.random.key(26), (M3, N3))
-expected3 = masked_copy_spec_3(x3, group_offsets_3, group_ids_3, m_tile_ids_3)
+x = jax.random.normal(jax.random.key(26), (M, N))
+expected = masked_copy_spec(x, group_offsets, group_ids, m_tile_ids)
 
 # YOUR TASK: Write the complete pl.pallas_call invocation.
 # Replace `None` with your working code.
@@ -694,13 +641,13 @@ expected3 = masked_copy_spec_3(x3, group_offsets_3, group_ids_3, m_tile_ids_3)
 # - PrefetchScalarGridSpec with num_scalar_prefetch=3
 # - in_specs: BlockSpec that uses m_tile_ids to route tiles
 # - out_specs: BlockSpec that uses m_tile_ids to route tiles
-# - grid=(num_tiles_3,)
+# - grid=(num_tiles,)
 # - Call args: (group_offsets, group_ids, m_tile_ids, x) — scalar prefetch first!
-actual3 = None  # Replace with pl.pallas_call(...)(...) invocation
+actual = None  # Replace with pl.pallas_call(...)(...) invocation
 
 # %%
-if actual3 is not None and jnp.allclose(actual3, expected3, atol=1e-5):
-    print(f"PASSED ✓  (shape={actual3.shape})")
+if actual is not None and jnp.allclose(actual, expected, atol=1e-5):
+    print(f"PASSED ✓  (shape={actual.shape})")
 else:
     print("FAILED ✗  (fill in the cell above)")
 
@@ -708,13 +655,13 @@ else:
 # <details><summary>Hint 1 of 2 — Structure</summary>
 #
 # ```python
-# actual3 = pl.pallas_call(
+# actual = pl.pallas_call(
 #     masked_copy_kernel_solved,
 #     grid_spec=pltpu.PrefetchScalarGridSpec(
 #         num_scalar_prefetch=3,
-#         in_specs=[pl.BlockSpec((bm3, N3), lambda i, go, gi, mt: (mt[i], 0))],
-#         out_specs=pl.BlockSpec((bm3, N3), lambda i, go, gi, mt: (mt[i], 0)),
-#         grid=(num_tiles_3,),
+#         in_specs=[pl.BlockSpec((bm, N), lambda i, go, gi, mt: (mt[i], 0))],
+#         out_specs=pl.BlockSpec((bm, N), lambda i, go, gi, mt: (mt[i], 0)),
+#         grid=(num_tiles,),
 #     ),
 #     out_shape=...,
 #     interpret=True,
@@ -725,17 +672,17 @@ else:
 # <details><summary>Hint 2 of 2 — Full solution</summary>
 #
 # ```python
-# actual3 = pl.pallas_call(
+# actual = pl.pallas_call(
 #     masked_copy_kernel_solved,
 #     grid_spec=pltpu.PrefetchScalarGridSpec(
 #         num_scalar_prefetch=3,
-#         in_specs=[pl.BlockSpec((bm3, N3), lambda i, go, gi, mt: (mt[i], 0))],
-#         out_specs=pl.BlockSpec((bm3, N3), lambda i, go, gi, mt: (mt[i], 0)),
-#         grid=(num_tiles_3,),
+#         in_specs=[pl.BlockSpec((bm, N), lambda i, go, gi, mt: (mt[i], 0))],
+#         out_specs=pl.BlockSpec((bm, N), lambda i, go, gi, mt: (mt[i], 0)),
+#         grid=(num_tiles,),
 #     ),
-#     out_shape=jax.ShapeDtypeStruct((M3, N3), jnp.float32),
+#     out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
 #     interpret=True,
-# )(group_offsets_3, group_ids_3, m_tile_ids_3, x3)
+# )(group_offsets, group_ids, m_tile_ids, x)
 # ```
 # </details>
 
@@ -775,27 +722,27 @@ else:
 # This is exactly the `get_store_mask` pattern used in ragged_dot.
 
 # %%
-M4 = 1024
-N4 = 64
-bm4 = 128
-G4 = 3
+M = 1024
+N = 64
+bm = 128
+G = 3
 
-group_sizes_4 = jnp.array([300, 212, 512], dtype=jnp.int32)
+group_sizes = jnp.array([300, 212, 512], dtype=jnp.int32)
 
-(group_offsets_4, group_ids_4, m_tile_ids_4), num_tiles_4 = \
-    make_group_metadata_reference(group_sizes_4, M4, bm4)
+(group_offsets, group_ids, m_tile_ids), num_tiles = \
+    make_group_metadata_reference(group_sizes, M, bm)
 
 # --- Reference ---
 def masked_copy_spec(x, group_offsets, group_ids, m_tile_ids):
     """Copy x to output, but only rows within their assigned group."""
     out = jnp.zeros_like(x)
-    for grid_id in range(num_tiles_4):
+    for grid_id in range(num_tiles):
         g = int(group_ids[grid_id])
         tile_id = int(m_tile_ids[grid_id])
         g_start = int(group_offsets[g])
         g_end = int(group_offsets[g + 1])
-        t_start = tile_id * bm4
-        t_end = t_start + bm4
+        t_start = tile_id * bm
+        t_end = t_start + bm
         for row in range(t_start, t_end):
             if g_start <= row < g_end:
                 out = out.at[row].set(x[row])
@@ -805,8 +752,8 @@ def masked_copy_spec(x, group_offsets, group_ids, m_tile_ids):
 def masked_copy_kernel(group_offsets_ref, group_ids_ref, m_tile_ids_ref,
                        x_ref, o_ref):
     # group_offsets_ref, group_ids_ref, m_tile_ids_ref: metadata in SMEM
-    # x_ref: (bm4, N4) — tile of input
-    # o_ref: (bm4, N4) — tile of output
+    # x_ref: (bm, N) — tile of input
+    # o_ref: (bm, N) — tile of output
     grid_id = pl.program_id(0)
     # YOUR CODE HERE
     # 1. Look up which group and tile this grid iteration processes
@@ -816,35 +763,35 @@ def masked_copy_kernel(group_offsets_ref, group_ids_ref, m_tile_ids_ref,
 
 
 # %%
-x4 = jax.random.normal(jax.random.key(27), (M4, N4))
-expected4 = masked_copy_spec(x4, group_offsets_4, group_ids_4, m_tile_ids_4)
+x = jax.random.normal(jax.random.key(27), (M, N))
+expected = masked_copy_spec(x, group_offsets, group_ids, m_tile_ids)
 
-actual4 = pl.pallas_call(
+actual = pl.pallas_call(
     masked_copy_kernel,
     grid_spec=pltpu.PrefetchScalarGridSpec(
         num_scalar_prefetch=3,
-        in_specs=[pl.BlockSpec((bm4, N4), lambda i, go, gi, mt: (mt[i], 0))],
-        out_specs=pl.BlockSpec((bm4, N4), lambda i, go, gi, mt: (mt[i], 0)),
-        grid=(num_tiles_4,),
+        in_specs=[pl.BlockSpec((bm, N), lambda i, go, gi, mt: (mt[i], 0))],
+        out_specs=pl.BlockSpec((bm, N), lambda i, go, gi, mt: (mt[i], 0)),
+        grid=(num_tiles,),
     ),
-    out_shape=jax.ShapeDtypeStruct((M4, N4), jnp.float32),
+    out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
     interpret=True,
-)(group_offsets_4, group_ids_4, m_tile_ids_4, x4)
+)(group_offsets, group_ids, m_tile_ids, x)
 
-if jnp.allclose(actual4, expected4, atol=1e-5):
-    print(f"PASSED ✓  (shape={actual4.shape})")
+if jnp.allclose(actual, expected, atol=1e-5):
+    print(f"PASSED ✓  (shape={actual.shape})")
 else:
-    nan_count = int(jnp.isnan(actual4).sum())
+    nan_count = int(jnp.isnan(actual).sum())
     if nan_count > 0:
-        nan_rows = jnp.where(jnp.isnan(actual4).any(axis=1))[0]
+        nan_rows = jnp.where(jnp.isnan(actual).any(axis=1))[0]
         print(f"FAILED ✗  {nan_count} NaN values in output (rows: {nan_rows.tolist()[:8]}...)")
         print(f"  Common cause: indexing group_offsets_ref with grid_id instead of group_id")
     else:
-        diff = jnp.abs(actual4 - expected4)
+        diff = jnp.abs(actual - expected)
         worst_row = int(jnp.argmax(diff.max(axis=1)))
         max_err = float(diff[worst_row].max())
         print(f"FAILED ✗  max error: {max_err:.6f} at row {worst_row}")
-        g_boundaries = group_offsets_4.tolist()
+        g_boundaries = group_offsets.tolist()
         print(f"  Group boundaries at rows: {g_boundaries}")
 
 # %% [markdown]
@@ -855,9 +802,9 @@ else:
 # m_tile = m_tile_ids_ref[grid_id]
 # group_start = group_offsets_ref[group_id]
 # group_end = group_offsets_ref[group_id + 1]
-# tile_start = m_tile * bm4
+# tile_start = m_tile * bm
 #
-# # Build a (bm4, N4) mask where row_index in [group_start, group_end)
+# # Build a (bm, N) mask where row_index in [group_start, group_end)
 # # Tip: jax.lax.broadcasted_iota(dtype, shape, dimension)
 # ```
 # </details>
@@ -869,9 +816,9 @@ else:
 # m_tile = m_tile_ids_ref[grid_id]
 # group_start = group_offsets_ref[group_id]
 # group_end = group_offsets_ref[group_id + 1]
-# tile_start = m_tile * bm4
+# tile_start = m_tile * bm
 #
-# row_ids = tile_start + jax.lax.broadcasted_iota(jnp.int32, (bm4, N4), 0)
+# row_ids = tile_start + jax.lax.broadcasted_iota(jnp.int32, (bm, N), 0)
 # mask = (row_ids >= group_start) & (row_ids < group_end)
 #
 # o_ref[...] = jnp.where(mask, x_ref[...], o_ref[...])
@@ -909,18 +856,18 @@ else:
 # the same.
 
 # %%
-ROWS5, COLS5 = 256, 128
-bm5 = 64
+ROWS, COLS = 256, 128
+bm = 64
 
 # --- Reference ---
 def softmax_spec(x):
-    """x: (ROWS5, COLS5) → row-wise softmax"""
+    """x: (ROWS, COLS) → row-wise softmax"""
     return jax.nn.softmax(x, axis=1)
 
 # --- Kernel skeleton ---
 def softmax_kernel(x_ref, o_ref):
-    # x_ref: (bm5, COLS5) — one row block (full width)
-    # o_ref: (bm5, COLS5) — output
+    # x_ref: (bm, COLS) — one row block (full width)
+    # o_ref: (bm, COLS) — output
     # YOUR CODE HERE
     # 1. Compute row max for numerical stability
     # 2. Subtract max, exponentiate
@@ -928,17 +875,30 @@ def softmax_kernel(x_ref, o_ref):
 
 
 # %%
-x5 = jax.random.normal(jax.random.key(28), (ROWS5, COLS5))
+x = jax.random.normal(jax.random.key(28), (ROWS, COLS))
 
 # YOUR TASK: Write the kernel above AND define the config below.
 softmax_grid = ...       # TODO: how many row blocks?
 softmax_in_specs = ...   # TODO: list with one BlockSpec
 softmax_out_specs = ...  # TODO: BlockSpec for output
 
-check(softmax_kernel, softmax_spec, (x5,),
-      grid=softmax_grid,
-      in_specs=softmax_in_specs,
-      out_specs=softmax_out_specs)
+expected = softmax_spec(x)
+actual = pl.pallas_call(
+    softmax_kernel,
+    grid=softmax_grid,
+    in_specs=softmax_in_specs,
+    out_specs=softmax_out_specs,
+    out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),
+    interpret=True,
+)(x)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — Kernel</summary>
@@ -955,9 +915,9 @@ check(softmax_kernel, softmax_spec, (x5,),
 # <details><summary>Hint 2 of 3 — Config</summary>
 #
 # ```python
-# softmax_grid = (ROWS5 // bm5,)  # 256 // 64 = 4 row blocks
-# softmax_in_specs = [pl.BlockSpec((bm5, COLS5), lambda i: (i, 0))]
-# softmax_out_specs = pl.BlockSpec((bm5, COLS5), lambda i: (i, 0))
+# softmax_grid = (ROWS // bm,)  # 256 // 64 = 4 row blocks
+# softmax_in_specs = [pl.BlockSpec((bm, COLS), lambda i: (i, 0))]
+# softmax_out_specs = pl.BlockSpec((bm, COLS), lambda i: (i, 0))
 # ```
 # </details>
 #
@@ -971,9 +931,9 @@ check(softmax_kernel, softmax_spec, (x5,),
 #     row_sum = exp_x.sum(axis=1, keepdims=True)
 #     o_ref[...] = exp_x / row_sum
 #
-# softmax_grid = (ROWS5 // bm5,)
-# softmax_in_specs = [pl.BlockSpec((bm5, COLS5), lambda i: (i, 0))]
-# softmax_out_specs = pl.BlockSpec((bm5, COLS5), lambda i: (i, 0))
+# softmax_grid = (ROWS // bm,)
+# softmax_in_specs = [pl.BlockSpec((bm, COLS), lambda i: (i, 0))]
+# softmax_out_specs = pl.BlockSpec((bm, COLS), lambda i: (i, 0))
 # ```
 # </details>
 
@@ -1092,16 +1052,16 @@ def out_imap(n_i, grid_id, k_i, group_meta_ref, group_offset_ref):
 # the correct group's weight matrix!
 
 # %%
-G6 = 4
-M6, K6, N6 = 512, 256, 128
-bm6, bk6, bn6 = 128, 128, 128
+G = 4
+M, K, N = 512, 256, 128
+bm, bk, bn = 128, 128, 128
 
-group_sizes_6 = jnp.array([M6 // G6] * G6, dtype=jnp.int32)
-tiles_k6 = K6 // bk6
-tiles_n6 = N6 // bn6
+group_sizes = jnp.array([M // G] * G, dtype=jnp.int32)
+tiles_k = K // bk
+tiles_n = N // bn
 
-(group_offsets_6, group_ids_6, m_tile_ids_6), num_tiles_6 = \
-    make_group_metadata(group_sizes_6, M6, bm6)
+(group_offsets, group_ids, m_tile_ids), num_tiles = \
+    make_group_metadata(group_sizes, M, bm)
 
 # --- Reference ---
 def simple_gmm_spec(lhs, rhs, group_sizes):
@@ -1118,10 +1078,10 @@ def simple_gmm_kernel(group_metadata_ref, group_offset_ref,
                       lhs_ref, rhs_ref, o_ref, acc_ref):
     # group_metadata_ref: (group_offsets, group_ids, m_tile_ids) in SMEM
     # group_offset_ref: unused here (for sharding)
-    # lhs_ref: (bm6, bk6) — tile of lhs
-    # rhs_ref: (bk6, bn6) — tile of rhs (group dim squeezed by None)
-    # o_ref: (bm6, bn6) — output tile
-    # acc_ref: (bm6, bn6) — scratch accumulator
+    # lhs_ref: (bm, bk) — tile of lhs
+    # rhs_ref: (bk, bn) — tile of rhs (group dim squeezed by None)
+    # o_ref: (bm, bn) — output tile
+    # acc_ref: (bm, bn) — scratch accumulator
     grid_id = pl.program_id(1)
     k_i = pl.program_id(2)
 
@@ -1132,36 +1092,36 @@ def simple_gmm_kernel(group_metadata_ref, group_offset_ref,
 
 
 # %%
-lhs6 = jax.random.normal(jax.random.key(30), (M6, K6))
-rhs6 = jax.random.normal(jax.random.key(31), (G6, K6, N6))
-expected6 = simple_gmm_spec(lhs6, rhs6, group_sizes_6)
+lhs = jax.random.normal(jax.random.key(30), (M, K))
+rhs = jax.random.normal(jax.random.key(31), (G, K, N))
+expected = simple_gmm_spec(lhs, rhs, group_sizes)
 
-group_metadata_6 = (group_offsets_6, group_ids_6, m_tile_ids_6)
-group_offset_6 = jnp.array([0], dtype=jnp.int32)
+group_metadata = (group_offsets, group_ids, m_tile_ids)
+group_offset = jnp.array([0], dtype=jnp.int32)
 
-actual6 = pl.pallas_call(
+actual = pl.pallas_call(
     simple_gmm_kernel,
     grid_spec=pltpu.PrefetchScalarGridSpec(
         num_scalar_prefetch=2,
         in_specs=[
-            pl.BlockSpec((bm6, bk6), lhs_imap),
-            pl.BlockSpec((None, bk6, bn6), rhs_imap),
+            pl.BlockSpec((bm, bk), lhs_imap),
+            pl.BlockSpec((None, bk, bn), rhs_imap),
         ],
-        out_specs=pl.BlockSpec((bm6, bn6), out_imap),
-        grid=(tiles_n6, num_tiles_6, tiles_k6),
-        scratch_shapes=[pltpu.VMEM((bm6, bn6), jnp.float32)],
+        out_specs=pl.BlockSpec((bm, bn), out_imap),
+        grid=(tiles_n, num_tiles, tiles_k),
+        scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],
     ),
-    out_shape=jax.ShapeDtypeStruct((M6, N6), jnp.float32),
+    out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
     interpret=True,
-)(group_metadata_6, group_offset_6, lhs6, rhs6)
+)(group_metadata, group_offset, lhs, rhs)
 
-if jnp.allclose(actual6, expected6, atol=1e-2, rtol=1e-2):
-    print(f"PASSED ✓  (shape={actual6.shape})")
+if jnp.allclose(actual, expected, atol=1e-2, rtol=1e-2):
+    print(f"PASSED ✓  (shape={actual.shape})")
 else:
-    max_err = float(jnp.max(jnp.abs(actual6 - expected6)))
+    max_err = float(jnp.max(jnp.abs(actual - expected)))
     print(f"FAILED ✗  max error: {max_err:.6f}")
-    print(f"  Expected[:2,:4]:\n{expected6[:2,:4]}")
-    print(f"  Actual[:2,:4]:\n{actual6[:2,:4]}")
+    print(f"  Expected[:2,:4]:\n{expected[:2,:4]}")
+    print(f"  Actual[:2,:4]:\n{actual[:2,:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — Approach</summary>
@@ -1174,11 +1134,11 @@ else:
 # ```python
 # @pl.when(k_i == 0)
 # def _zero():
-#     acc_ref[...] = jnp.zeros((bm6, bn6), dtype=jnp.float32)
+#     acc_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
 #
 # acc_ref[...] += lhs_ref[...] @ rhs_ref[...]
 #
-# @pl.when(k_i == tiles_k6 - 1)
+# @pl.when(k_i == tiles_k - 1)
 # def _store():
 #     o_ref[...] = acc_ref[...]
 # ```
@@ -1216,21 +1176,21 @@ else:
 # ```
 
 # %%
-G7 = 3
-M7, K7, N7 = 1024, 256, 128
-bm7, bk7, bn7 = 128, 128, 128
+G = 3
+M, K, N = 1024, 256, 128
+bm, bk, bn = 128, 128, 128
 
-group_sizes_7 = jnp.array([300, 212, 512], dtype=jnp.int32)
-tiles_k7 = K7 // bk7
-tiles_n7 = N7 // bn7
+group_sizes = jnp.array([300, 212, 512], dtype=jnp.int32)
+tiles_k = K // bk
+tiles_n = N // bn
 
-(group_offsets_7, group_ids_7, m_tile_ids_7), num_tiles_7 = \
-    make_group_metadata(group_sizes_7, M7, bm7)
+(group_offsets, group_ids, m_tile_ids), num_tiles = \
+    make_group_metadata(group_sizes, M, bm)
 
-print(f"M={M7}, G={G7}, group_sizes={group_sizes_7.tolist()}")
-print(f"num_tiles={num_tiles_7} (vs {M7//bm7} base tiles)")
-print(f"group_ids[:num_tiles]={group_ids_7[:num_tiles_7].tolist()}")
-print(f"m_tile_ids[:num_tiles]={m_tile_ids_7[:num_tiles_7].tolist()}")
+print(f"M={M}, G={G}, group_sizes={group_sizes.tolist()}")
+print(f"num_tiles={num_tiles} (vs {M//bm} base tiles)")
+print(f"group_ids[:num_tiles]={group_ids[:num_tiles].tolist()}")
+print(f"m_tile_ids[:num_tiles]={m_tile_ids[:num_tiles].tolist()}")
 
 # --- Reference ---
 def ragged_dot_spec(lhs, rhs, group_sizes):
@@ -1256,35 +1216,35 @@ def ragged_dot_kernel(group_metadata_ref, group_offset_ref,
 
 
 # %%
-lhs7 = jax.random.normal(jax.random.key(40), (M7, K7))
-rhs7 = jax.random.normal(jax.random.key(41), (G7, K7, N7))
-expected7 = ragged_dot_spec(lhs7, rhs7, group_sizes_7)
+lhs = jax.random.normal(jax.random.key(40), (M, K))
+rhs = jax.random.normal(jax.random.key(41), (G, K, N))
+expected = ragged_dot_spec(lhs, rhs, group_sizes)
 
-group_metadata_7 = (group_offsets_7, group_ids_7, m_tile_ids_7)
-group_offset_7 = jnp.array([0], dtype=jnp.int32)
+group_metadata = (group_offsets, group_ids, m_tile_ids)
+group_offset = jnp.array([0], dtype=jnp.int32)
 
-actual7 = pl.pallas_call(
+actual = pl.pallas_call(
     ragged_dot_kernel,
     grid_spec=pltpu.PrefetchScalarGridSpec(
         num_scalar_prefetch=2,
         in_specs=[
-            pl.BlockSpec((bm7, bk7), lhs_imap),
-            pl.BlockSpec((None, bk7, bn7), rhs_imap),
+            pl.BlockSpec((bm, bk), lhs_imap),
+            pl.BlockSpec((None, bk, bn), rhs_imap),
         ],
-        out_specs=pl.BlockSpec((bm7, bn7), out_imap),
-        grid=(tiles_n7, num_tiles_7, tiles_k7),
-        scratch_shapes=[pltpu.VMEM((bm7, bn7), jnp.float32)],
+        out_specs=pl.BlockSpec((bm, bn), out_imap),
+        grid=(tiles_n, num_tiles, tiles_k),
+        scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],
     ),
-    out_shape=jax.ShapeDtypeStruct((M7, N7), jnp.float32),
+    out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
     interpret=True,
-)(group_metadata_7, group_offset_7, lhs7, rhs7)
+)(group_metadata, group_offset, lhs, rhs)
 
-total_rows7 = int(group_sizes_7.sum())
-if jnp.allclose(actual7[:total_rows7], expected7[:total_rows7], atol=1e-2, rtol=1e-2):
-    print(f"PASSED ✓  (shape={actual7.shape})")
-    print(f"  Verified {total_rows7} active rows")
+total_rows = int(group_sizes.sum())
+if jnp.allclose(actual[:total_rows], expected[:total_rows], atol=1e-2, rtol=1e-2):
+    print(f"PASSED ✓  (shape={actual.shape})")
+    print(f"  Verified {total_rows} active rows")
 else:
-    max_err = float(jnp.max(jnp.abs(actual7[:total_rows7] - expected7[:total_rows7])))
+    max_err = float(jnp.max(jnp.abs(actual[:total_rows] - expected[:total_rows])))
     print(f"FAILED ✗  max error: {max_err:.6f}")
 
 # %% [markdown]
@@ -1293,10 +1253,10 @@ else:
 # ```python
 # # Steps 1-2 are the same as Puzzle 6 (zero + accumulate)
 #
-# @pl.when(k_i == tiles_k7 - 1)
+# @pl.when(k_i == tiles_k - 1)
 # def _store():
 #     mask = get_store_mask(grid_id, group_offsets, group_ids,
-#                           m_tile_ids, bm7, bn7)
+#                           m_tile_ids, bm, bn)
 #     acc = acc_ref[...]
 #     o_ref[...] = jnp.where(mask, acc, o_ref[...].astype(acc.dtype))
 # ```
@@ -1307,14 +1267,14 @@ else:
 # ```python
 # @pl.when(k_i == 0)
 # def _zero():
-#     acc_ref[...] = jnp.zeros((bm7, bn7), dtype=jnp.float32)
+#     acc_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
 #
 # acc_ref[...] += lhs_ref[...] @ rhs_ref[...]
 #
-# @pl.when(k_i == tiles_k7 - 1)
+# @pl.when(k_i == tiles_k - 1)
 # def _store():
 #     mask = get_store_mask(grid_id, group_offsets, group_ids,
-#                           m_tile_ids, bm7, bn7)
+#                           m_tile_ids, bm, bn)
 #     acc = acc_ref[...]
 #     o_ref[...] = jnp.where(mask, acc, o_ref[...].astype(acc.dtype))
 # ```
@@ -1374,19 +1334,19 @@ else:
 #   innermost `"arbitrary"` dimension for correct pipelining.
 
 # %%
-G8 = 3
-M8, K8, N8 = 1024, 128, 128
-bm8, bk8, bn8 = 128, 128, 128
+G = 3
+M, K, N = 1024, 128, 128
+bm, bk, bn = 128, 128, 128
 
-group_sizes_8 = jnp.array([300, 340, 384], dtype=jnp.int32)
-tiles_k8 = K8 // bk8
-tiles_n8 = N8 // bn8
+group_sizes = jnp.array([300, 340, 384], dtype=jnp.int32)
+tiles_k = K // bk
+tiles_n = N // bn
 
-(group_offsets_8, group_ids_8, m_tile_ids_8), num_tiles_8 = \
-    make_group_metadata(group_sizes_8, M8, bm8, visit_empty_groups=True)
+(group_offsets, group_ids, m_tile_ids), num_tiles = \
+    make_group_metadata(group_sizes, M, bm, visit_empty_groups=True)
 
-print(f"group_sizes={group_sizes_8.tolist()}, num_tiles={num_tiles_8}")
-print(f"group_ids={group_ids_8[:num_tiles_8].tolist()}")
+print(f"group_sizes={group_sizes.tolist()}, num_tiles={num_tiles}")
+print(f"group_ids={group_ids[:num_tiles].tolist()}")
 
 # --- Reference ---
 def tgmm_spec(lhs_t, rhs, group_sizes):
@@ -1406,10 +1366,10 @@ def tgmm_spec(lhs_t, rhs, group_sizes):
 # --- Kernel skeleton ---
 def tgmm_kernel(group_metadata_ref, group_offset_ref,
                 lhs_ref, rhs_ref, o_ref, acc_ref):
-    # lhs_ref: (bm8, bk8) — tile of lhs (M, K)
-    # rhs_ref: (bm8, bn8) — tile of rhs
-    # o_ref: (bk8, bn8) — output tile for one group (None dim squeezed)
-    # acc_ref: (bk8, bn8) — scratch accumulator
+    # lhs_ref: (bm, bk) — tile of lhs (M, K)
+    # rhs_ref: (bm, bn) — tile of rhs
+    # o_ref: (bk, bn) — output tile for one group (None dim squeezed)
+    # acc_ref: (bk, bn) — scratch accumulator
     group_offsets, group_ids, m_tile_ids = group_metadata_ref
     grid_id = pl.program_id(2)  # tgmm grid: (tiles_n, tiles_k, num_tiles)
 
@@ -1435,39 +1395,39 @@ def tgmm_out_imap(n_i, k_i, grid_id, group_meta_ref, group_offset_ref):
 
 
 # %%
-lhs_t_8 = jax.random.normal(jax.random.key(50), (K8, M8))
-rhs8 = jax.random.normal(jax.random.key(51), (M8, N8))
-expected8 = tgmm_spec(lhs_t_8, rhs8, group_sizes_8)
+lhs_t = jax.random.normal(jax.random.key(50), (K, M))
+rhs = jax.random.normal(jax.random.key(51), (M, N))
+expected = tgmm_spec(lhs_t, rhs, group_sizes)
 
 # tgmm works on (M, K) internally — transpose lhs
-lhs8 = lhs_t_8.T  # (M, K)
+lhs = lhs_t.T  # (M, K)
 
-group_metadata_8 = (group_offsets_8, group_ids_8, m_tile_ids_8)
-group_offset_8 = jnp.array([0], dtype=jnp.int32)
+group_metadata = (group_offsets, group_ids, m_tile_ids)
+group_offset = jnp.array([0], dtype=jnp.int32)
 
-actual8 = pl.pallas_call(
+actual = pl.pallas_call(
     tgmm_kernel,
     grid_spec=pltpu.PrefetchScalarGridSpec(
         num_scalar_prefetch=2,
         in_specs=[
-            pl.BlockSpec((bm8, bk8), tgmm_lhs_imap),
-            pl.BlockSpec((bm8, bn8), tgmm_rhs_imap),
+            pl.BlockSpec((bm, bk), tgmm_lhs_imap),
+            pl.BlockSpec((bm, bn), tgmm_rhs_imap),
         ],
-        out_specs=pl.BlockSpec((None, bk8, bn8), tgmm_out_imap),
-        grid=(tiles_n8, tiles_k8, num_tiles_8),
-        scratch_shapes=[pltpu.VMEM((bk8, bn8), jnp.float32)],
+        out_specs=pl.BlockSpec((None, bk, bn), tgmm_out_imap),
+        grid=(tiles_n, tiles_k, num_tiles),
+        scratch_shapes=[pltpu.VMEM((bk, bn), jnp.float32)],
     ),
-    out_shape=jax.ShapeDtypeStruct((G8, K8, N8), jnp.float32),
+    out_shape=jax.ShapeDtypeStruct((G, K, N), jnp.float32),
     interpret=True,
-)(group_metadata_8, group_offset_8, lhs8, rhs8)
+)(group_metadata, group_offset, lhs, rhs)
 
-if jnp.allclose(actual8, expected8, atol=1e-1, rtol=1e-2):
-    print(f"PASSED ✓  (shape={actual8.shape})")
+if jnp.allclose(actual, expected, atol=1e-1, rtol=1e-2):
+    print(f"PASSED ✓  (shape={actual.shape})")
 else:
-    max_err = float(jnp.max(jnp.abs(actual8 - expected8)))
+    max_err = float(jnp.max(jnp.abs(actual - expected)))
     print(f"FAILED ✗  max error: {max_err:.6f}")
-    print(f"  Expected[0,:2,:4]:\n{expected8[0,:2,:4]}")
-    print(f"  Actual[0,:2,:4]:\n{actual8[0,:2,:4]}")
+    print(f"  Expected[0,:2,:4]:\n{expected[0,:2,:4]}")
+    print(f"  Actual[0,:2,:4]:\n{actual[0,:2,:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — Prologue/epilogue detection</summary>
@@ -1488,12 +1448,12 @@ else:
 # ```python
 # @pl.when(is_prologue)
 # def _zero():
-#     acc_ref[...] = jnp.zeros((bk8, bn8), dtype=jnp.float32)
+#     acc_ref[...] = jnp.zeros((bk, bn), dtype=jnp.float32)
 #
 # mask_lhs = get_store_mask(grid_id, group_offsets, group_ids,
-#                            m_tile_ids, bm8, bk8)
+#                            m_tile_ids, bm, bk)
 # mask_rhs = get_store_mask(grid_id, group_offsets, group_ids,
-#                            m_tile_ids, bm8, bn8)
+#                            m_tile_ids, bm, bn)
 # lhs_masked = jnp.where(mask_lhs, lhs_ref[...], 0)
 # rhs_masked = jnp.where(mask_rhs, rhs_ref[...], 0)
 # acc_ref[...] += lhs_masked.T @ rhs_masked
@@ -1516,14 +1476,14 @@ else:
 #
 # @pl.when(is_prologue)
 # def _zero():
-#     acc_ref[...] = jnp.zeros((bk8, bn8), dtype=jnp.float32)
+#     acc_ref[...] = jnp.zeros((bk, bn), dtype=jnp.float32)
 #
 # @pl.when(nonzero_gs)
 # def _compute():
 #     mask_lhs = get_store_mask(grid_id, group_offsets, group_ids,
-#                                m_tile_ids, bm8, bk8)
+#                                m_tile_ids, bm, bk)
 #     mask_rhs = get_store_mask(grid_id, group_offsets, group_ids,
-#                                m_tile_ids, bm8, bn8)
+#                                m_tile_ids, bm, bn)
 #     lhs_masked = jnp.where(mask_lhs, lhs_ref[...], 0)
 #     rhs_masked = jnp.where(mask_rhs, rhs_ref[...], 0)
 #     acc_ref[...] += lhs_masked.T @ rhs_masked

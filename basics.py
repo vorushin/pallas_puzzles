@@ -24,7 +24,7 @@
 # build your Pallas intuition from scratch, culminating in tiled matmul
 # with fusion. Every puzzle runs on **CPU**
 # via `interpret=True` — no TPU needed. Fill in the kernel skeletons and
-# run the check cells.
+# run the test cells.
 #
 # **Prerequisites**: solid JAX/NumPy. No prior Pallas required.
 #
@@ -45,63 +45,11 @@
 # !pip install -q jax jaxtyping
 
 # %%
-import functools
 import jax
 import jax.numpy as jnp
-from jax import lax
 from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 print(f"JAX {jax.__version__}")
-
-
-# %%
-def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
-          out_shape=None, scratch_shapes=(), atol=1e-3, rtol=1e-3, **kwargs):
-    """Run a Pallas kernel in interpret mode and compare against a reference spec.
-
-    Args:
-        kernel_fn: The Pallas kernel to test.
-        spec_fn: Reference function computing the expected output in pure JAX.
-        inputs: Tuple of input arrays.
-        grid: Pallas grid tuple.
-        in_specs: List of BlockSpec for inputs (None = no blocking).
-        out_specs: BlockSpec for output (None = no blocking).
-        out_shape: jax.ShapeDtypeStruct for the output.
-        scratch_shapes: Scratch memory specs (empty by default).
-        atol, rtol: Tolerance for comparison.
-        **kwargs: Extra args to pl.pallas_call.
-    """
-    expected = spec_fn(*inputs)
-    if out_shape is None:
-        out_shape = jax.ShapeDtypeStruct(expected.shape, expected.dtype)
-
-    # Handle default specs
-    if in_specs is None:
-        in_specs = [pl.BlockSpec(memory_space=pl.ANY)] * len(inputs)
-    if out_specs is None:
-        out_specs = pl.BlockSpec(memory_space=pl.ANY)
-
-    actual = pl.pallas_call(
-        kernel_fn,
-        grid=grid,
-        in_specs=in_specs,
-        out_specs=out_specs,
-        out_shape=out_shape,
-        scratch_shapes=scratch_shapes,
-        interpret=True,
-        **kwargs,
-    )(*inputs)
-
-    if jnp.allclose(actual, expected, atol=atol, rtol=rtol):
-        print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
-    else:
-        diff = jnp.abs(actual - expected)
-        max_err = float(jnp.max(diff))
-        worst_idx = jnp.unravel_index(jnp.argmax(diff), diff.shape)
-        print(f"FAILED ✗  max error: {max_err:.6f} at index {tuple(int(i) for i in worst_idx)}")
-        n = min(4, expected.shape[0])
-        print(f"  Expected (first {n}):\n{expected[:n]}")
-        print(f"  Got      (first {n}):\n{actual[:n]}")
 
 
 # %% [markdown]
@@ -135,23 +83,37 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 # ```
 
 # %%
-N1 = 32
+N = 32
 
 # --- Reference (spec) ---
 def add10_spec(x):
-    """x: (N1,) → x + 10"""
+    """x: (N,) → x + 10"""
     return x + 10.0
 
 # --- Kernel skeleton ---
 def add10_kernel(x_ref, o_ref):
-    # x_ref: Ref to input block (shape (N1,))
-    # o_ref: Ref to output block (shape (N1,))
+    # x_ref: Ref to input block (shape (N,))
+    # o_ref: Ref to output block (shape (N,))
     # YOUR CODE HERE
 
 
 # %%
-x1 = jax.random.uniform(jax.random.key(0), (N1,))
-check(add10_kernel, add10_spec, (x1,))
+x = jax.random.uniform(jax.random.key(0), (N,))
+
+expected = add10_spec(x)
+actual = pl.pallas_call(
+    add10_kernel,
+    out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),
+    interpret=True,
+)(x)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint</summary>
@@ -218,31 +180,44 @@ check(add10_kernel, add10_spec, (x1,))
 # The kernel body stays identical whether you have 4 blocks or 400.
 
 # %%
-N2 = 256   # vector length
-bm2 = 64   # tile (block) size — each kernel invocation processes bm2 elements
+N = 256   # vector length
+bm = 64   # tile (block) size — each kernel invocation processes bm elements
 
 # --- Reference ---
 def vadd_spec(x, y):
-    """x, y: (N2,) → x + y"""
+    """x, y: (N,) → x + y"""
     return x + y
 
 # --- Kernel skeleton ---
 def vadd_kernel(x_ref, y_ref, o_ref):
-    # Each invocation sees a (bm2,) slice thanks to BlockSpec
+    # Each invocation sees a (bm,) slice thanks to BlockSpec
     # YOUR CODE HERE
 
 
 # %%
-x2 = jax.random.uniform(jax.random.key(1), (N2,))
-y2 = jax.random.uniform(jax.random.key(2), (N2,))
+x = jax.random.uniform(jax.random.key(1), (N,))
+y = jax.random.uniform(jax.random.key(2), (N,))
 
-check(vadd_kernel, vadd_spec, (x2, y2),
-      grid=(N2 // bm2,),              # 256 // 64 = 4 invocations
-      in_specs=[
-          pl.BlockSpec((bm2,), lambda i: (i,)),  # x: invocation i → block i
-          pl.BlockSpec((bm2,), lambda i: (i,)),  # y: invocation i → block i
-      ],
-      out_specs=pl.BlockSpec((bm2,), lambda i: (i,)))  # out: invocation i → block i
+expected = vadd_spec(x, y)
+actual = pl.pallas_call(
+    vadd_kernel,
+    grid=(N // bm,),              # 256 // 64 = 4 invocations
+    in_specs=[
+        pl.BlockSpec((bm,), lambda i: (i,)),  # x: invocation i → block i
+        pl.BlockSpec((bm,), lambda i: (i,)),  # y: invocation i → block i
+    ],
+    out_specs=pl.BlockSpec((bm,), lambda i: (i,)),  # out: invocation i → block i
+    out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),
+    interpret=True,
+)(x, y)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint</summary>
@@ -281,14 +256,14 @@ check(vadd_kernel, vadd_spec, (x2, y2),
 # simple and generic.
 
 # %%
-N3 = 256   # vector length (same as Puzzle 2)
-bm3 = 64   # tile size
-num_blocks_3 = N3 // bm3   # 4 blocks total
+N = 256   # vector length (same as Puzzle 2)
+bm = 64   # tile size
+num_blocks = N // bm   # 4 blocks total
 
 # --- Reference ---
 def vadd_rev_spec(x, y):
-    """x, y: (N3,) → x + block_reverse(y)"""
-    y_rev = y.reshape(num_blocks_3, bm3)[::-1].reshape(N3)
+    """x, y: (N,) → x + block_reverse(y)"""
+    y_rev = y.reshape(num_blocks, bm)[::-1].reshape(N)
     return x + y_rev
 
 # Kernel is provided (same body as Puzzle 2):
@@ -297,18 +272,31 @@ def vadd_rev_kernel(x_ref, y_ref, o_ref):
 
 
 # %%
-x3 = jax.random.uniform(jax.random.key(100), (N3,))
-y3 = jax.random.uniform(jax.random.key(101), (N3,))
+x = jax.random.uniform(jax.random.key(100), (N,))
+y = jax.random.uniform(jax.random.key(101), (N,))
 
 # YOUR TASK: Fix the y BlockSpec so it reads blocks in reversed order.
 # Only the y index map needs to change — x and out are correct.
-check(vadd_rev_kernel, vadd_rev_spec, (x3, y3),
-      grid=(num_blocks_3,),
-      in_specs=[
-          pl.BlockSpec((bm3,), lambda i: (i,)),              # x: block i (correct)
-          pl.BlockSpec((bm3,), lambda i: (i,)),              # y: block i — FIX THIS
-      ],
-      out_specs=pl.BlockSpec((bm3,), lambda i: (i,)))
+expected = vadd_rev_spec(x, y)
+actual = pl.pallas_call(
+    vadd_rev_kernel,
+    grid=(num_blocks,),
+    in_specs=[
+        pl.BlockSpec((bm,), lambda i: (i,)),              # x: block i (correct)
+        pl.BlockSpec((bm,), lambda i: (i,)),              # y: block i — FIX THIS
+    ],
+    out_specs=pl.BlockSpec((bm,), lambda i: (i,)),
+    out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),
+    interpret=True,
+)(x, y)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint</summary>
@@ -316,7 +304,7 @@ check(vadd_rev_kernel, vadd_rev_spec, (x3, y3),
 # The y index map should map grid index `i` to the reversed block position.
 # With 4 blocks, `i=0 → block 3`, `i=1 → block 2`, etc.:
 # ```python
-# pl.BlockSpec((bm3,), lambda i: (num_blocks_3 - 1 - i,))
+# pl.BlockSpec((bm,), lambda i: (num_blocks - 1 - i,))
 # ```
 # </details>
 
@@ -357,12 +345,12 @@ check(vadd_rev_kernel, vadd_rev_spec, (x3, y3),
 # ```
 
 # %%
-M4, N4 = 128, 128
-bm4, bn4 = 32, 32
+M, N = 128, 128
+bm, bn = 32, 32
 
 # --- Reference ---
 def mul2d_spec(x):
-    """x: (M4, N4) → x * 2"""
+    """x: (M, N) → x * 2"""
     return x * 2.0
 
 # --- Kernel skeleton ---
@@ -371,11 +359,25 @@ def mul2d_kernel(x_ref, o_ref):
 
 
 # %%
-x4 = jax.random.uniform(jax.random.key(3), (M4, N4))
-check(mul2d_kernel, mul2d_spec, (x4,),
-      grid=(M4 // bm4, N4 // bn4),
-      in_specs=[pl.BlockSpec((bm4, bn4), lambda i, j: (i, j))],
-      out_specs=pl.BlockSpec((bm4, bn4), lambda i, j: (i, j)))
+x = jax.random.uniform(jax.random.key(3), (M, N))
+
+expected = mul2d_spec(x)
+actual = pl.pallas_call(
+    mul2d_kernel,
+    grid=(M // bm, N // bn),
+    in_specs=[pl.BlockSpec((bm, bn), lambda i, j: (i, j))],
+    out_specs=pl.BlockSpec((bm, bn), lambda i, j: (i, j)),
+    out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),
+    interpret=True,
+)(x)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint</summary>
@@ -423,39 +425,51 @@ check(mul2d_kernel, mul2d_spec, (x4,),
 # produces shape `(bm, bn)`.
 
 # %%
-M5, N5 = 128, 64
-bm5, bn5 = 32, 32
+M, N = 128, 64
+bm, bn = 32, 32
 
 # --- Reference ---
 def outer_spec(a, b):
-    """a: (M5,), b: (N5,) → (M5, N5)"""
+    """a: (M,), b: (N,) → (M, N)"""
     return a[:, None] * b[None, :]
 
 # --- Kernel skeleton ---
 def outer_kernel(a_ref, b_ref, o_ref):
-    # a_ref: (bm5,) — a slice of vector a
-    # b_ref: (bn5,) — a slice of vector b
-    # o_ref: (bm5, bn5) — output tile
+    # a_ref: (bm,) — a slice of vector a
+    # b_ref: (bn,) — a slice of vector b
+    # o_ref: (bm, bn) — output tile
     # YOUR CODE HERE
 
 
 # %%
-a5 = jax.random.uniform(jax.random.key(4), (M5,))
-b5 = jax.random.uniform(jax.random.key(5), (N5,))
+a = jax.random.uniform(jax.random.key(4), (M,))
+b = jax.random.uniform(jax.random.key(5), (N,))
 
-check(outer_kernel, outer_spec, (a5, b5),
-      grid=(M5 // bm5, N5 // bn5),
-      in_specs=[
-          pl.BlockSpec((bm5,), lambda i, j: (i,)),
-          pl.BlockSpec((bn5,), lambda i, j: (j,)),
-      ],
-      out_specs=pl.BlockSpec((bm5, bn5), lambda i, j: (i, j)),
-      out_shape=jax.ShapeDtypeStruct((M5, N5), jnp.float32))
+expected = outer_spec(a, b)
+actual = pl.pallas_call(
+    outer_kernel,
+    grid=(M // bm, N // bn),
+    in_specs=[
+        pl.BlockSpec((bm,), lambda i, j: (i,)),
+        pl.BlockSpec((bn,), lambda i, j: (j,)),
+    ],
+    out_specs=pl.BlockSpec((bm, bn), lambda i, j: (i, j)),
+    out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
+    interpret=True,
+)(a, b)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — Approach</summary>
 #
-# You need to broadcast `a_ref[...]` (shape `(bm5,)`) and `b_ref[...]` (shape `(bn5,)`) to produce shape `(bm5, bn5)`. Use NumPy-style broadcasting: add a new axis with `[:, None]` and `[None, :]`.
+# You need to broadcast `a_ref[...]` (shape `(bm,)`) and `b_ref[...]` (shape `(bn,)`) to produce shape `(bm, bn)`. Use NumPy-style broadcasting: add a new axis with `[:, None]` and `[None, :]`.
 # </details>
 #
 # <details><summary>Hint 2 of 2 — Full solution</summary>
@@ -486,12 +500,12 @@ check(outer_kernel, outer_spec, (a5, b5),
 # 3. **`out_specs`**: a single `BlockSpec` for the output.
 #
 # The kernel below is the solved version from Puzzle 2. Your task is to
-# wire up the tiling so it processes `N6`-element vectors in blocks of
-# `bm6`.
+# wire up the tiling so it processes `N`-element vectors in blocks of
+# `bm`.
 
 # %%
-N6 = 256
-bm6 = 64
+N = 256
+bm = 64
 
 def vadd_spec6(x, y):
     return x + y
@@ -502,42 +516,55 @@ def vadd_kernel_solved(x_ref, y_ref, o_ref):
 
 
 # %%
-x6 = jax.random.uniform(jax.random.key(10), (N6,))
-y6 = jax.random.uniform(jax.random.key(11), (N6,))
+x = jax.random.uniform(jax.random.key(10), (N,))
+y = jax.random.uniform(jax.random.key(11), (N,))
 
 # YOUR TASK: Define grid, in_specs, out_specs to tile the computation
-# into bm6-sized blocks. The kernel processes one block per invocation.
+# into bm-sized blocks. The kernel processes one block per invocation.
 vadd_grid = ...       # TODO: how many tiles? (should be a tuple)
 vadd_in_specs = ...   # TODO: list of BlockSpec, one per input
 vadd_out_specs = ...  # TODO: BlockSpec for output
 
-check(vadd_kernel_solved, vadd_spec6, (x6, y6),
-      grid=vadd_grid,
-      in_specs=vadd_in_specs,
-      out_specs=vadd_out_specs)
+expected = vadd_spec6(x, y)
+actual = pl.pallas_call(
+    vadd_kernel_solved,
+    grid=vadd_grid,
+    in_specs=vadd_in_specs,
+    out_specs=vadd_out_specs,
+    out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),
+    interpret=True,
+)(x, y)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — What to fill in</summary>
 #
 # ```python
-# vadd_grid = (N6 // bm6,)  # 256 // 64 = 4 tiles
+# vadd_grid = (N // bm,)  # 256 // 64 = 4 tiles
 # vadd_in_specs = [
-#     pl.BlockSpec((bm6,), lambda i: (i,)),  # one per input
-#     pl.BlockSpec((bm6,), lambda i: (i,)),
+#     pl.BlockSpec((bm,), lambda i: (i,)),  # one per input
+#     pl.BlockSpec((bm,), lambda i: (i,)),
 # ]
-# vadd_out_specs = pl.BlockSpec((bm6,), lambda i: (i,))
+# vadd_out_specs = pl.BlockSpec((bm,), lambda i: (i,))
 # ```
 # </details>
 #
 # <details><summary>Hint 2 of 2 — Full solution</summary>
 #
 # ```python
-# vadd_grid = (N6 // bm6,)
+# vadd_grid = (N // bm,)
 # vadd_in_specs = [
-#     pl.BlockSpec((bm6,), lambda i: (i,)),
-#     pl.BlockSpec((bm6,), lambda i: (i,)),
+#     pl.BlockSpec((bm,), lambda i: (i,)),
+#     pl.BlockSpec((bm,), lambda i: (i,)),
 # ]
-# vadd_out_specs = pl.BlockSpec((bm6,), lambda i: (i,))
+# vadd_out_specs = pl.BlockSpec((bm,), lambda i: (i,))
 # ```
 # </details>
 
@@ -582,20 +609,20 @@ check(vadd_kernel_solved, vadd_spec6, (x6, y6),
 # (for matmul) conditionally store on the last tile.
 
 # %%
-ROWS7, COLS7 = 16, 256
-bm7, bk7 = 16, 64
-tiles_k7 = COLS7 // bk7
+ROWS, COLS = 16, 256
+bm, bk = 16, 64
+tiles_k = COLS // bk
 
 # --- Reference ---
 def rowsum_spec(x):
-    """x: (ROWS7, COLS7) → (ROWS7,)"""
+    """x: (ROWS, COLS) → (ROWS,)"""
     return x.sum(axis=1)
 
 # --- Kernel skeleton ---
 def rowsum_kernel(x_ref, o_ref):
-    # x_ref: (bm7, bk7) — one tile of x
-    # o_ref: (bm7,) — accumulator for this row block
-    # Grid: (ROWS7 // bm7, COLS7 // bk7) — iterates (row_block, k_block)
+    # x_ref: (bm, bk) — one tile of x
+    # o_ref: (bm,) — accumulator for this row block
+    # Grid: (ROWS // bm, COLS // bk) — iterates (row_block, k_block)
     k_i = pl.program_id(1)
     # YOUR CODE HERE
     # 1. On first k tile (k_i == 0), initialize the output
@@ -603,12 +630,24 @@ def rowsum_kernel(x_ref, o_ref):
 
 
 # %%
-x7 = jax.random.uniform(jax.random.key(6), (ROWS7, COLS7))
-check(rowsum_kernel, rowsum_spec, (x7,),
-      grid=(ROWS7 // bm7, tiles_k7),
-      in_specs=[pl.BlockSpec((bm7, bk7), lambda i, k: (i, k))],
-      out_specs=pl.BlockSpec((bm7,), lambda i, k: (i,)),
-      out_shape=jax.ShapeDtypeStruct((ROWS7,), jnp.float32))
+x = jax.random.uniform(jax.random.key(6), (ROWS, COLS))
+expected = rowsum_spec(x)
+actual = pl.pallas_call(
+    rowsum_kernel,
+    grid=(ROWS // bm, tiles_k),
+    in_specs=[pl.BlockSpec((bm, bk), lambda i, k: (i, k))],
+    out_specs=pl.BlockSpec((bm,), lambda i, k: (i,)),
+    out_shape=jax.ShapeDtypeStruct((ROWS,), jnp.float32),
+    interpret=True,
+)(x)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — Approach</summary>
@@ -621,7 +660,7 @@ check(rowsum_kernel, rowsum_spec, (x7,),
 # ```python
 # @pl.when(k_i == 0)
 # def _zero():
-#     o_ref[...] = jnp.zeros((bm7,), dtype=jnp.float32)
+#     o_ref[...] = jnp.zeros((bm,), dtype=jnp.float32)
 #
 # o_ref[...] += ...  # partial row sum of x_ref
 # ```
@@ -632,7 +671,7 @@ check(rowsum_kernel, rowsum_spec, (x7,),
 # ```python
 # @pl.when(k_i == 0)
 # def _zero():
-#     o_ref[...] = jnp.zeros((bm7,), dtype=jnp.float32)
+#     o_ref[...] = jnp.zeros((bm,), dtype=jnp.float32)
 #
 # o_ref[...] += x_ref[...].sum(axis=1)
 # ```
@@ -691,8 +730,8 @@ check(rowsum_kernel, rowsum_spec, (x7,),
 # ```python
 # out_shape = jax.ShapeDtypeStruct((M, N), jnp.float32)
 # ```
-# (In earlier puzzles, the `check` helper inferred this automatically
-# from the reference output. From here on, you'll see it explicitly.)
+# (In earlier puzzles, `out_shape` matched the input shape. Here the
+# output shape `(M, N)` differs from either input, so it must be explicit.)
 #
 # Inside a kernel, use `a @ b` (or equivalently `jax.lax.dot(a, b)`) for
 # the matrix multiply. Both map to the TPU's MXU (Matrix Multiplier Unit).
@@ -713,43 +752,55 @@ check(rowsum_kernel, rowsum_spec, (x7,),
 # production Pallas kernel.
 
 # %%
-M8, K8, N8 = 128, 256, 128
-bm8, bk8, bn8 = 64, 128, 64
-tiles_m8 = M8 // bm8
-tiles_n8 = N8 // bn8
-tiles_k8 = K8 // bk8
+M, K, N = 128, 256, 128
+bm, bk, bn = 64, 128, 64
+tiles_m = M // bm
+tiles_n = N // bn
+tiles_k = K // bk
 
 # --- Reference ---
 def matmul_spec(a, b):
-    """a: (M8, K8), b: (K8, N8) → (M8, N8)"""
+    """a: (M, K), b: (K, N) → (M, N)"""
     return a @ b
 
 # --- Kernel skeleton ---
 def matmul_kernel(a_ref, b_ref, o_ref, acc_ref):
-    # a_ref: (bm8, bk8) — tile of A
-    # b_ref: (bk8, bn8) — tile of B
-    # o_ref: (bm8, bn8) — output tile
-    # acc_ref: (bm8, bn8) — scratch accumulator (VMEM on TPU)
+    # a_ref: (bm, bk) — tile of A
+    # b_ref: (bk, bn) — tile of B
+    # o_ref: (bm, bn) — output tile
+    # acc_ref: (bm, bn) — scratch accumulator (VMEM on TPU)
     k_i = pl.program_id(2)
     # YOUR CODE HERE
     # 1. Zero acc_ref when k_i == 0
     # 2. Accumulate: acc_ref[...] += a_ref[...] @ b_ref[...]
-    # 3. Store acc_ref → o_ref when k_i == tiles_k8 - 1
+    # 3. Store acc_ref → o_ref when k_i == tiles_k - 1
 
 
 # %%
-a8 = jax.random.normal(jax.random.key(7), (M8, K8))
-b8 = jax.random.normal(jax.random.key(8), (K8, N8))
+a = jax.random.normal(jax.random.key(7), (M, K))
+b = jax.random.normal(jax.random.key(8), (K, N))
 
-check(matmul_kernel, matmul_spec, (a8, b8),
-      grid=(tiles_m8, tiles_n8, tiles_k8),
-      in_specs=[
-          pl.BlockSpec((bm8, bk8), lambda m, n, k: (m, k)),
-          pl.BlockSpec((bk8, bn8), lambda m, n, k: (k, n)),
-      ],
-      out_specs=pl.BlockSpec((bm8, bn8), lambda m, n, k: (m, n)),
-      out_shape=jax.ShapeDtypeStruct((M8, N8), jnp.float32),
-      scratch_shapes=[pltpu.VMEM((bm8, bn8), jnp.float32)])
+expected = matmul_spec(a, b)
+actual = pl.pallas_call(
+    matmul_kernel,
+    grid=(tiles_m, tiles_n, tiles_k),
+    in_specs=[
+        pl.BlockSpec((bm, bk), lambda m, n, k: (m, k)),
+        pl.BlockSpec((bk, bn), lambda m, n, k: (k, n)),
+    ],
+    out_specs=pl.BlockSpec((bm, bn), lambda m, n, k: (m, n)),
+    out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
+    scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],
+    interpret=True,
+)(a, b)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — Pattern skeleton</summary>
@@ -757,11 +808,11 @@ check(matmul_kernel, matmul_spec, (a8, b8),
 # ```python
 # @pl.when(k_i == 0)
 # def _zero():
-#     acc_ref[...] = jnp.zeros((bm8, bn8), dtype=jnp.float32)
+#     acc_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
 #
 # acc_ref[...] += ...  # A_tile @ B_tile
 #
-# @pl.when(k_i == tiles_k8 - 1)
+# @pl.when(k_i == tiles_k - 1)
 # def _store():
 #     o_ref[...] = acc_ref[...]
 # ```
@@ -772,11 +823,11 @@ check(matmul_kernel, matmul_spec, (a8, b8),
 # ```python
 # @pl.when(k_i == 0)
 # def _zero():
-#     acc_ref[...] = jnp.zeros((bm8, bn8), dtype=jnp.float32)
+#     acc_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
 #
 # acc_ref[...] += a_ref[...] @ b_ref[...]
 #
-# @pl.when(k_i == tiles_k8 - 1)
+# @pl.when(k_i == tiles_k - 1)
 # def _store():
 #     o_ref[...] = acc_ref[...]
 # ```
@@ -808,11 +859,11 @@ check(matmul_kernel, matmul_spec, (a8, b8),
 # and `scratch_shapes` (the VMEM accumulator from Puzzle 8).
 
 # %%
-M9, K9, N9 = 128, 256, 128
-bm9, bk9, bn9 = 64, 128, 64
-tiles_m9 = M9 // bm9
-tiles_n9 = N9 // bn9
-tiles_k9 = K9 // bk9
+M, K, N = 128, 256, 128
+bm, bk, bn = 64, 128, 64
+tiles_m = M // bm
+tiles_n = N // bn
+tiles_k = K // bk
 
 def matmul_spec9(a, b):
     return a @ b
@@ -822,48 +873,64 @@ def matmul_kernel_solved(a_ref, b_ref, o_ref, acc_ref):
     k_i = pl.program_id(2)
     @pl.when(k_i == 0)
     def _zero():
-        acc_ref[...] = jnp.zeros((bm9, bn9), dtype=jnp.float32)
+        acc_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
     acc_ref[...] += a_ref[...] @ b_ref[...]
-    @pl.when(k_i == tiles_k9 - 1)
+    @pl.when(k_i == tiles_k - 1)
     def _store():
         o_ref[...] = acc_ref[...]
 
 
 # %%
-a9 = jax.random.normal(jax.random.key(20), (M9, K9))
-b9 = jax.random.normal(jax.random.key(21), (K9, N9))
+a = jax.random.normal(jax.random.key(20), (M, K))
+b = jax.random.normal(jax.random.key(21), (K, N))
+
+expected = matmul_spec9(a, b)
 
 # YOUR TASK: Replace ALL arguments with correct values.
-check(matmul_kernel_solved, matmul_spec9, (a9, b9),
-      grid=(),                   # FIX THIS — 3D grid (tiles_m, tiles_n, tiles_k)
-      in_specs=None,             # FIX THIS — BlockSpec for A and B
-      out_specs=None,            # FIX THIS — BlockSpec for C
-      out_shape=None,            # FIX THIS — output ShapeDtypeStruct
-      scratch_shapes=())         # FIX THIS — VMEM scratch for accumulator
+actual = pl.pallas_call(
+    matmul_kernel_solved,
+    grid=(),                   # FIX THIS — 3D grid (tiles_m, tiles_n, tiles_k)
+    in_specs=None,             # FIX THIS — BlockSpec for A and B
+    out_specs=None,            # FIX THIS — BlockSpec for C
+    out_shape=None,            # FIX THIS — output ShapeDtypeStruct
+    scratch_shapes=(),         # FIX THIS — VMEM scratch for accumulator
+    interpret=True,
+)(a, b)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — What to fill in</summary>
 #
 # You need five things:
-# - `grid = (tiles_m9, tiles_n9, tiles_k9)`
+# - `grid = (tiles_m, tiles_n, tiles_k)`
 # - `in_specs` with two BlockSpecs: A maps `(m,n,k)→(m,k)`, B maps `(m,n,k)→(k,n)`
 # - `out_specs` maps `(m,n,k)→(m,n)`
-# - `out_shape = jax.ShapeDtypeStruct((M9, N9), jnp.float32)`
-# - `scratch_shapes = [pltpu.VMEM((bm9, bn9), jnp.float32)]`
+# - `out_shape = jax.ShapeDtypeStruct((M, N), jnp.float32)`
+# - `scratch_shapes = [pltpu.VMEM((bm, bn), jnp.float32)]`
 # </details>
 #
 # <details><summary>Hint 2 of 2 — Full solution</summary>
 #
 # ```python
-# check(matmul_kernel_solved, matmul_spec9, (a9, b9),
-#       grid=(tiles_m9, tiles_n9, tiles_k9),
-#       in_specs=[
-#           pl.BlockSpec((bm9, bk9), lambda m, n, k: (m, k)),
-#           pl.BlockSpec((bk9, bn9), lambda m, n, k: (k, n)),
-#       ],
-#       out_specs=pl.BlockSpec((bm9, bn9), lambda m, n, k: (m, n)),
-#       out_shape=jax.ShapeDtypeStruct((M9, N9), jnp.float32),
-#       scratch_shapes=[pltpu.VMEM((bm9, bn9), jnp.float32)])
+# actual = pl.pallas_call(
+#     matmul_kernel_solved,
+#     grid=(tiles_m, tiles_n, tiles_k),
+#     in_specs=[
+#         pl.BlockSpec((bm, bk), lambda m, n, k: (m, k)),
+#         pl.BlockSpec((bk, bn), lambda m, n, k: (k, n)),
+#     ],
+#     out_specs=pl.BlockSpec((bm, bn), lambda m, n, k: (m, n)),
+#     out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
+#     scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],
+#     interpret=True,
+# )(a, b)
 # ```
 # </details>
 
@@ -918,7 +985,7 @@ check(matmul_kernel_solved, matmul_spec9, (a9, b9),
 # single LHS matrix are multiplied by different group weight matrices.
 
 # %%
-G10, M10, K10, N10 = 4, 64, 128, 64
+G, M, K, N = 4, 64, 128, 64
 
 # --- Reference ---
 def batched_matmul_spec(lhs, rhs):
@@ -928,30 +995,42 @@ def batched_matmul_spec(lhs, rhs):
 # --- Kernel skeleton ---
 def batched_matmul_kernel(lhs_ref, rhs_ref, o_ref):
     # With None in block_shape, the batch dim is squeezed:
-    # lhs_ref: (M10, K10) — one group's lhs (batch dim squeezed)
-    # rhs_ref: (K10, N10) — one group's rhs (batch dim squeezed)
-    # o_ref: (M10, N10) — one group's output (batch dim squeezed)
+    # lhs_ref: (M, K) — one group's lhs (batch dim squeezed)
+    # rhs_ref: (K, N) — one group's rhs (batch dim squeezed)
+    # o_ref: (M, N) — one group's output (batch dim squeezed)
     # YOUR CODE HERE
 
 
 # %%
-lhs10 = jax.random.normal(jax.random.key(12), (G10, M10, K10))
-rhs10 = jax.random.normal(jax.random.key(13), (G10, K10, N10))
+lhs = jax.random.normal(jax.random.key(12), (G, M, K))
+rhs = jax.random.normal(jax.random.key(13), (G, K, N))
 
-check(batched_matmul_kernel, batched_matmul_spec, (lhs10, rhs10),
-      grid=(G10,),
-      in_specs=[
-          pl.BlockSpec((None, M10, K10), lambda g: (g, 0, 0)),
-          pl.BlockSpec((None, K10, N10), lambda g: (g, 0, 0)),
-      ],
-      out_specs=pl.BlockSpec((None, M10, N10), lambda g: (g, 0, 0)),
-      # Full output is (G, M, N) even though each kernel invocation writes (M, N)
-      out_shape=jax.ShapeDtypeStruct((G10, M10, N10), jnp.float32))
+expected = batched_matmul_spec(lhs, rhs)
+actual = pl.pallas_call(
+    batched_matmul_kernel,
+    grid=(G,),
+    in_specs=[
+        pl.BlockSpec((None, M, K), lambda g: (g, 0, 0)),
+        pl.BlockSpec((None, K, N), lambda g: (g, 0, 0)),
+    ],
+    out_specs=pl.BlockSpec((None, M, N), lambda g: (g, 0, 0)),
+    # Full output is (G, M, N) even though each kernel invocation writes (M, N)
+    out_shape=jax.ShapeDtypeStruct((G, M, N), jnp.float32),
+    interpret=True,
+)(lhs, rhs)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — Approach</summary>
 #
-# With `None` in BlockSpec, the batch dimension is **squeezed** — the refs have shape `(M10, K10)` and `(K10, N10)` directly (no leading dim). So the kernel just needs a single matmul.
+# With `None` in BlockSpec, the batch dimension is **squeezed** — the refs have shape `(M, K)` and `(K, N)` directly (no leading dim). So the kernel just needs a single matmul.
 # </details>
 #
 # <details><summary>Hint 2 of 2 — Full solution</summary>
@@ -988,15 +1067,15 @@ check(batched_matmul_kernel, batched_matmul_spec, (lhs10, rhs10),
 # SiLU, etc.) and is used in production MoE kernels.
 
 # %%
-M11, K11, N11 = 128, 256, 128
-bm11, bk11, bn11 = 64, 128, 64
-tiles_m11 = M11 // bm11
-tiles_n11 = N11 // bn11
-tiles_k11 = K11 // bk11
+M, K, N = 128, 256, 128
+bm, bk, bn = 64, 128, 64
+tiles_m = M // bm
+tiles_n = N // bn
+tiles_k = K // bk
 
 # --- Reference ---
 def fused_relu_spec(a, b):
-    """a: (M11, K11), b: (K11, N11) → ReLU(a @ b)"""
+    """a: (M, K), b: (K, N) → ReLU(a @ b)"""
     return jnp.maximum(a @ b, 0)
 
 # --- Kernel skeleton ---
@@ -1007,18 +1086,30 @@ def fused_relu_kernel(a_ref, b_ref, o_ref, acc_ref):
 
 
 # %%
-a11 = jax.random.normal(jax.random.key(22), (M11, K11))
-b11 = jax.random.normal(jax.random.key(23), (K11, N11))
+a = jax.random.normal(jax.random.key(22), (M, K))
+b = jax.random.normal(jax.random.key(23), (K, N))
 
-check(fused_relu_kernel, fused_relu_spec, (a11, b11),
-      grid=(tiles_m11, tiles_n11, tiles_k11),
-      in_specs=[
-          pl.BlockSpec((bm11, bk11), lambda m, n, k: (m, k)),
-          pl.BlockSpec((bk11, bn11), lambda m, n, k: (k, n)),
-      ],
-      out_specs=pl.BlockSpec((bm11, bn11), lambda m, n, k: (m, n)),
-      out_shape=jax.ShapeDtypeStruct((M11, N11), jnp.float32),
-      scratch_shapes=[pltpu.VMEM((bm11, bn11), jnp.float32)])
+expected = fused_relu_spec(a, b)
+actual = pl.pallas_call(
+    fused_relu_kernel,
+    grid=(tiles_m, tiles_n, tiles_k),
+    in_specs=[
+        pl.BlockSpec((bm, bk), lambda m, n, k: (m, k)),
+        pl.BlockSpec((bk, bn), lambda m, n, k: (k, n)),
+    ],
+    out_specs=pl.BlockSpec((bm, bn), lambda m, n, k: (m, n)),
+    out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
+    scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],
+    interpret=True,
+)(a, b)
+
+if jnp.allclose(actual, expected, atol=1e-3):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual - expected)
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — Approach</summary>
@@ -1031,11 +1122,11 @@ check(fused_relu_kernel, fused_relu_spec, (a11, b11),
 # ```python
 # @pl.when(k_i == 0)
 # def _zero():
-#     acc_ref[...] = jnp.zeros((bm11, bn11), dtype=jnp.float32)
+#     acc_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
 #
 # acc_ref[...] += a_ref[...] @ b_ref[...]
 #
-# @pl.when(k_i == tiles_k11 - 1)
+# @pl.when(k_i == tiles_k - 1)
 # def _store():
 #     o_ref[...] = jnp.maximum(acc_ref[...], 0)
 # ```
