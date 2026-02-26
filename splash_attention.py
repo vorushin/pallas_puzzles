@@ -1117,19 +1117,7 @@ else:
 # Puzzle 6, but reading the classification from an array instead of
 # computing it.
 #
-# ```
-#    block_mask (precomputed)
-#           kv=0  kv=1  kv=2  kv=3
-#         ┌──────┬──────┬──────┬──────┐
-#    i=0  │  1   │  0   │  0   │  0   │     0 = SKIP
-#         ├──────┼──────┼──────┼──────┤     1 = PARTIAL
-#    i=1  │  2   │  1   │  0   │  0   │     2 = FULL
-#         ├──────┼──────┼──────┼──────┤
-#    i=2  │  2   │  2   │  1   │  0   │
-#         ├──────┼──────┼──────┼──────┤
-#    i=3  │  2   │  2   │  2   │  1   │
-#         └──────┴──────┴──────┴──────┘
-# ```
+# ![block_mask (precomputed)](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle7.drawio.svg)
 #
 # For the mask itself on partial blocks, we precompute per-element mask
 # arrays and store them in `partial_masks`. For causal masking, there is
