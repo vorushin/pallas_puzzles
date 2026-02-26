@@ -217,11 +217,12 @@ else:
 
 # %% [markdown]
 # ---
-# ## Puzzle 2: Tiled Softmax — The Denominator Problem
+# ## Puzzle 2: Tiled Softmax — The Multi-Pass Problem
 #
-# **Goal**: Compute `softmax(x)` for a long vector using a Pallas kernel
-# that processes tiles of the input, **accumulating the global max and
-# sum(exp)** across tiles.
+# **Goal**: Compute `softmax(x)` for a long vector using **two Pallas
+# kernels** — one to find the global max, one to sum the exponentials —
+# then normalize. This is the straightforward approach and it shows why
+# we'll need something better.
 #
 # ### Theory
 #
@@ -251,18 +252,20 @@ else:
 # *row* of the score matrix — and we do this for every row. That's a lot
 # of HBM traffic. Can we do better? (Spoiler: yes — Puzzle 3.)
 #
-# For now, let's implement the honest 3-pass version. We'll use a Pallas
-# kernel for the **reduction** part (passes 1 and 2 together — compute
-# max and sum_exp in one pass since they can be combined), then apply the
-# normalization.
+# For now, let's implement the honest multi-pass version with **two
+# separate kernels**:
 #
-# This kernel tiles over the K dimension using the zero/accumulate pattern
-# from basics.py Puzzle 7:
-# - `@pl.when(k == 0)`: initialize max and sum_exp
-# - Every tile: update running max, accumulate sum of exponentials
+# **Kernel 1 — `tiled_max_kernel`**: Tile over x to find the global max.
+# Uses the zero/accumulate pattern from basics.py Puzzle 7:
+# `@pl.when(k == 0)` initializes, then every tile updates the running max.
 #
-# The kernel outputs **two scalars**: the global max `m` and the
-# log-sum-exp `l = log(sum(exp(x - m)))`.
+# **Kernel 2 — `tiled_sumexp_kernel`**: Tile over x again, now that we
+# know `m`, to compute `l = sum(exp(x - m))`. This kernel receives `m`
+# as an input (it was computed by kernel 1).
+#
+# The key limitation: kernel 2 **cannot start until kernel 1 finishes**
+# because it needs the global max. This sequential dependency is what
+# forces multiple passes.
 
 # %%
 N2 = 512          # vector length
@@ -275,43 +278,64 @@ def softmax_spec(x):
     return jax.nn.softmax(x)
 
 
-# --- Kernel: compute (max, sum_exp) via tiled reduction ---
-def softmax_stats_kernel(x_ref, m_ref, l_ref):
-    """Tile over x to compute global max m and sum_exp l.
+# --- Kernel 1: find global max via tiled reduction ---
+def tiled_max_kernel(x_ref, m_ref):
+    """Tile over x to compute global max m.
 
     x_ref: (bn2,) — one tile of x
     m_ref: ()     — running global max (scalar output)
+
+    Grid: (tiles_k2,) — iterates over tiles of x
+    """
+    k = pl.program_id(0)
+    pass  # YOUR CODE HERE
+    # 1. On first tile (k == 0): set m = max(tile)
+    # 2. On later tiles: m = max(m, max(tile))
+
+
+# --- Kernel 2: compute sum of exponentials (needs global max m) ---
+def tiled_sumexp_kernel(x_ref, m_ref, l_ref):
+    """Tile over x to compute l = sum(exp(x - m)), given global max m.
+
+    x_ref: (bn2,) — one tile of x
+    m_ref: ()     — global max (input, already computed by kernel 1)
     l_ref: ()     — running sum of exp(x - m) (scalar output)
 
     Grid: (tiles_k2,) — iterates over tiles of x
     """
     k = pl.program_id(0)
     pass  # YOUR CODE HERE
-    # 1. On first tile (k == 0): set m = max(tile), l = sum(exp(tile - m))
-    # 2. On later tiles: update m = max(m, max(tile)),
-    #    correct l for the new max, add new exponentials
+    # 1. On first tile (k == 0): set l = sum(exp(tile - m))
+    # 2. On later tiles: l += sum(exp(tile - m))
 
 
 # %%
 x2 = jax.random.normal(jax.random.key(10), (N2,))
 
-# Run the stats kernel
-m2_shape = jax.ShapeDtypeStruct((), jnp.float32)
-l2_shape = jax.ShapeDtypeStruct((), jnp.float32)
-
-m2, l2 = pl.pallas_call(
-    softmax_stats_kernel,
+# Pass 1: find global max
+m2 = pl.pallas_call(
+    tiled_max_kernel,
     grid=(tiles_k2,),
     in_specs=[pl.BlockSpec((bn2,), lambda k: (k,))],
-    out_specs=(
-        pl.BlockSpec(memory_space=pl.ANY),  # m: scalar, no blocking
-        pl.BlockSpec(memory_space=pl.ANY),  # l: scalar, no blocking
-    ),
-    out_shape=(m2_shape, l2_shape),
+    out_specs=pl.BlockSpec(memory_space=pl.ANY),
+    out_shape=jax.ShapeDtypeStruct((), jnp.float32),
     interpret=True,
 )(x2)
 
-# Now use m and l to compute softmax (this part is given)
+# Pass 2: compute sum(exp(x - m)) — needs m from pass 1
+l2 = pl.pallas_call(
+    tiled_sumexp_kernel,
+    grid=(tiles_k2,),
+    in_specs=[
+        pl.BlockSpec((bn2,), lambda k: (k,)),  # x: tiled
+        pl.BlockSpec(memory_space=pl.ANY),       # m: scalar, no blocking
+    ],
+    out_specs=pl.BlockSpec(memory_space=pl.ANY),
+    out_shape=jax.ShapeDtypeStruct((), jnp.float32),
+    interpret=True,
+)(x2, m2)
+
+# Pass 3: normalize (just JAX, no kernel needed)
 softmax2 = jnp.exp(x2 - m2) / l2
 
 expected2 = softmax_spec(x2)
@@ -323,54 +347,59 @@ else:
     print(f"  l={float(l2):.3f} (expected {float(jnp.sum(jnp.exp(x2 - jnp.max(x2)))):.3f})")
 
 # %% [markdown]
-# <details><summary>Hint 1 of 3 — First tile</summary>
+# <details><summary>Hint 1 of 3 — tiled_max_kernel</summary>
 #
-# On the first tile, just compute the local statistics:
+# This is a standard tiled reduction — same pattern as basics.py Puzzle 7:
 # ```python
 # @pl.when(k == 0)
 # def _():
-#     tile = x_ref[...]
-#     m_ref[...] = jnp.max(tile)
-#     l_ref[...] = jnp.sum(jnp.exp(tile - jnp.max(tile)))
+#     m_ref[...] = jnp.max(x_ref[...])
+#
+# @pl.when(k > 0)
+# def _():
+#     m_ref[...] = jnp.maximum(m_ref[...], jnp.max(x_ref[...]))
 # ```
 # </details>
 #
-# <details><summary>Hint 2 of 3 — Later tiles (the tricky part)</summary>
+# <details><summary>Hint 2 of 3 — tiled_sumexp_kernel</summary>
 #
-# When a new tile has a larger max, you need to **correct** the running sum:
+# Since we already know the global max `m`, this is a simple accumulation:
 # ```python
+# @pl.when(k == 0)
+# def _():
+#     l_ref[...] = jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
+#
 # @pl.when(k > 0)
 # def _():
-#     tile = x_ref[...]
-#     m_old = m_ref[...]
-#     m_new = jnp.maximum(m_old, jnp.max(tile))
-#     # Old exponentials were computed with m_old — rescale them
-#     correction = jnp.exp(m_old - m_new)
-#     l_ref[...] = l_ref[...] * correction + jnp.sum(jnp.exp(tile - m_new))
-#     m_ref[...] = m_new
+#     l_ref[...] = l_ref[...] + jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
 # ```
 # </details>
 #
 # <details><summary>Hint 3 of 3 — Full solution</summary>
 #
 # ```python
-# def softmax_stats_kernel(x_ref, m_ref, l_ref):
+# def tiled_max_kernel(x_ref, m_ref):
 #     k = pl.program_id(0)
 #
 #     @pl.when(k == 0)
 #     def _():
-#         tile = x_ref[...]
-#         m_ref[...] = jnp.max(tile)
-#         l_ref[...] = jnp.sum(jnp.exp(tile - jnp.max(tile)))
+#         m_ref[...] = jnp.max(x_ref[...])
 #
 #     @pl.when(k > 0)
 #     def _():
-#         tile = x_ref[...]
-#         m_old = m_ref[...]
-#         m_new = jnp.maximum(m_old, jnp.max(tile))
-#         correction = jnp.exp(m_old - m_new)
-#         l_ref[...] = l_ref[...] * correction + jnp.sum(jnp.exp(tile - m_new))
-#         m_ref[...] = m_new
+#         m_ref[...] = jnp.maximum(m_ref[...], jnp.max(x_ref[...]))
+#
+#
+# def tiled_sumexp_kernel(x_ref, m_ref, l_ref):
+#     k = pl.program_id(0)
+#
+#     @pl.when(k == 0)
+#     def _():
+#         l_ref[...] = jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
+#
+#     @pl.when(k > 0)
+#     def _():
+#         l_ref[...] = l_ref[...] + jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
 # ```
 # </details>
 
@@ -378,16 +407,28 @@ else:
 # ---
 # ## Puzzle 3: Online Softmax — One Pass to Rule Them All
 #
-# **Goal**: Compute softmax in a **single pass** by maintaining running
-# statistics that get corrected on-the-fly as new tiles arrive.
+# **Goal**: Compute `m` and `l` in a **single kernel** by maintaining
+# running statistics that self-correct as new tiles arrive.
 #
 # ### Theory
 #
-# The 3-pass softmax from Puzzle 2 works, but it reads the data from HBM
-# multiple times. **Online softmax** (Milakov & Gimelshein, 2018) is THE
-# breakthrough that makes flash attention possible — it computes softmax
-# in a **single pass** by maintaining running statistics `(m, ℓ)` that
-# self-correct:
+# In Puzzle 2 we needed two separate kernels — one for max, one for
+# sum_exp — because `sum(exp(x - m))` requires knowing the global max
+# first. Two kernel launches means two full passes over the data from HBM.
+#
+# **Online softmax** (Milakov & Gimelshein, 2018) is THE breakthrough
+# that makes flash attention possible. The key idea: what if we compute
+# `sum(exp(x - m))` *while we're still discovering the max*? When a new
+# tile reveals a bigger max, we **correct** the running sum instead of
+# starting over:
+#
+# ```
+# exp(x - m_old) · exp(m_old - m_new) = exp(x - m_new)
+# ```
+#
+# This **correction factor** `exp(m_old - m_new)` retroactively fixes
+# all previous exponentials without re-reading the data. It turns two
+# sequential passes into one:
 #
 # ```
 # Initialize: m = -∞,  ℓ = 0
@@ -400,24 +441,10 @@ else:
 #     m = m_new
 # ```
 #
-# The **correction factor** `exp(m_old - m_new)` is the magic. When a new
-# tile has a bigger max, all previous exponentials need to be rescaled.
-# Instead of going back and recomputing them, we just multiply the running
-# sum by this factor. It works because:
-#
-# ```
-# exp(x - m_old) · exp(m_old - m_new) = exp(x - m_new)
-# ```
-#
-# After processing all tiles, `m` is the global max and `ℓ` is
-# `sum(exp(x - m))` — exactly what softmax needs.
-#
-# Doesn't this look a lot like what you wrote in Puzzle 2? It is! But
-# there's a crucial difference: in Puzzle 2 we used separate `@pl.when`
-# branches for `k == 0` and `k > 0`. Here we initialize `m = -∞` and
-# `ℓ = 0` and let the same update rule handle all tiles uniformly —
-# including the first one. This unified formulation is what we'll use in
-# flash attention.
+# Notice the initialization: `m = -∞` and `ℓ = 0`. On the first tile,
+# `correction = exp(-∞ - m_new) = 0`, so the old sum (0) gets zeroed out
+# and we're left with just the new exponentials. The same update rule
+# handles all tiles uniformly — no `k == 0` vs `k > 0` branching needed.
 #
 # ```
 # Tile 0          Tile 1          Tile 2          Tile 3
@@ -431,8 +458,11 @@ else:
 #                  ↑ correction!              ↑ correction!
 # ```
 #
-# **Your task**: Implement a Pallas kernel that computes `m` and `ℓ` in a
-# single pass, then use them to compute the final softmax output.
+# After processing all tiles, `m` is the global max and `ℓ` is
+# `sum(exp(x - m))` — exactly what softmax needs. One kernel, one pass.
+#
+# **Your task**: Write a single kernel that computes both `m` and `ℓ`,
+# then use them to compute the final softmax output.
 
 
 # %%
