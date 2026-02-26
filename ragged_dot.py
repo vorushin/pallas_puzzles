@@ -34,8 +34,7 @@
 # %% [markdown]
 # ## Setup
 #
-# Collapse this section (› arrow next to the heading), then ▶ **Run all cells
-# in section** from the menu to get everything ready in one click.
+# Click › to collapse this section, then click ▶ to get everything ready.
 
 # %%
 # !pip install -q jax jaxtyping
@@ -65,7 +64,8 @@ print(f"JAX {jax.__version__}")
 # they can't access runtime arrays.
 #
 # **Scalar prefetch** solves this. With `PrefetchScalarGridSpec`:
-# - Small arrays are loaded into **SMEM** (scalar memory) before the kernel
+# - Small arrays are loaded into **SMEM** (scalar memory — separate from
+#   **VMEM**, the vector memory where tile data lives) before the kernel
 # - Index maps receive these SMEM refs as extra arguments
 # - The kernel also receives them as leading arguments
 #

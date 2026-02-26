@@ -38,8 +38,7 @@
 # %% [markdown]
 # ## Setup
 #
-# Collapse this section (› arrow next to the heading), then ▶ **Run all cells
-# in section** from the menu to get everything ready in one click.
+# Click › to collapse this section, then click ▶ to get everything ready.
 
 # %%
 # !pip install -q jax jaxtyping

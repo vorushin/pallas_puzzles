@@ -40,8 +40,7 @@
 # %% [markdown]
 # ## Setup
 #
-# Collapse this section (› arrow next to the heading), then ▶ **Run all cells
-# in section** from the menu to get everything ready in one click.
+# Click › to collapse this section, then click ▶ to get everything ready.
 
 # %%
 # !pip install -q jax
@@ -731,7 +730,7 @@ else:
 #
 # For each Q block `i`, the kernel sweeps through ALL KV blocks
 # `kv ∈ [0, tiles_kv)`, maintaining per-row online softmax statistics.
-# Each Q block is completely independent — they don't share state.
+# **Each Q block is completely independent — they don't share state.**
 #
 # ```
 #                    K blocks
@@ -751,10 +750,13 @@ else:
 # and lives only in SRAM for the duration of that grid point.
 # ```
 #
-# The kernel body is almost identical to Puzzle 4. The only differences:
-# - `i = pl.program_id(0)` selects which Q block
-# - `kv = pl.program_id(1)` iterates over KV blocks
-# - BlockSpecs route Q/O by `i`, and K/V by `kv`
+# Here's the beautiful part: **the kernel body is identical to Puzzle 4.**
+# Copy it verbatim. The variable `i` is unused inside the kernel — the
+# BlockSpecs handle routing Q and O by `i`, so the kernel just sees "my Q
+# block" and "my KV block" exactly like before.
+#
+# All the new complexity lives in the `pallas_call` setup — the 2D grid
+# and the BlockSpec index maps. The kernel doesn't change at all.
 #
 # **This is flash attention.** Same exact outputs as Puzzle 1, but O(T)
 # memory instead of O(T²). The score matrix never exists in full — each
@@ -798,13 +800,10 @@ def flash_attention_kernel(
       - program_id(0) = i: which Q block
       - program_id(1) = kv: which KV block (reduction dimension)
     """
-    i = pl.program_id(0)
+    i = pl.program_id(0)    # unused — BlockSpecs handle Q/O routing by i
     kv = pl.program_id(1)
     # YOUR CODE HERE
-    # Same pattern as Puzzle 4, but now:
-    # - Use kv (not i) for the KV iteration
-    # - Init on kv == 0, normalize on kv == tiles_kv - 1
-    # - The BlockSpecs handle routing Q by i, K/V by kv
+    # Copy your Puzzle 4 kernel body — it works unchanged!
 
 
 # %%
@@ -836,12 +835,11 @@ else:
     print(f"  Got      (first 2 rows):\n{actual[:2, :8]}")
 
 # %% [markdown]
-# <details><summary>Hint 1 of 2 — It's Puzzle 4 with different program_id</summary>
+# <details><summary>Hint 1 of 2 — Really, just copy Puzzle 4</summary>
 #
-# The kernel body is identical to Puzzle 4. Just:
-# - Use `kv = pl.program_id(1)` instead of `pl.program_id(0)`
-# - Init on `kv == 0`, normalize on `kv == tiles_kv - 1`
-# - The BlockSpecs handle routing — you don't need to think about `i` inside the kernel
+# The kernel body is *literally* the same as Puzzle 4. Copy-paste it.
+# `i` is unused — the BlockSpecs route Q/O by `i` so the kernel never
+# needs to know which Q block it's processing.
 # </details>
 #
 # <details><summary>Hint 2 of 2 — Full solution</summary>
@@ -1397,7 +1395,8 @@ else:
 #
 # To pass `data_next` and `mask_next` to the kernel, we use
 # **`PrefetchScalarGridSpec`** (from ragged_dot.py) — small metadata arrays
-# are loaded into scalar memory (SMEM) and accessible to both index maps
+# are loaded into scalar memory (SMEM, separate from VMEM where tile data lives)
+# and accessible to both index maps
 # and the kernel body. The index maps use `data_next` to route K,V loads
 # to the correct blocks.
 #
