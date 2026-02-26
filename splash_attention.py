@@ -90,16 +90,7 @@ def attention_spec(Q, K, V):
 # (common in modern LLMs), it would be **64 GB**. Clearly we can't
 # materialize this matrix.
 #
-# ```
-# Q (T×H)    K^T (H×T)      S (T×T)         P (T×T)       V (T×H)   O (T×H)
-# ┌──────┐  ┌──────────┐  ┌───────────┐  ┌───────────┐  ┌──────┐  ┌──────┐
-# │      │  │          │  │           │  │ softmax   │  │      │  │      │
-# │      │@ │          │= │  S / √H   │→ │  rows     │@ │      │= │  O   │
-# │      │  │          │  │           │  │           │  │      │  │      │
-# └──────┘  └──────────┘  └───────────┘  └───────────┘  └──────┘  └──────┘
-#  T × H      H × T         T × T          T × T        T × H     T × H
-#                          ← O(T²) memory! →
-# ```
+# ![Attention computation flow](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle1.drawio.svg)
 #
 # Let's start by implementing this naive version, then spend the rest of the
 # notebook learning to **never materialize S**.
@@ -182,16 +173,7 @@ else:
 # 2 needs to finish before step 3. That means **three separate passes**
 # over the data from HBM:
 #
-# ```
-# Pass 1: HBM → SRAM → HBM    Find global max m
-#          ──────────────→
-#
-# Pass 2: HBM → SRAM → HBM    Compute ℓ = Σ exp(xᵢ - m)
-#          ──────────────→
-#
-# Pass 3: HBM → SRAM → HBM    Write exp(xᵢ - m) / ℓ
-#          ──────────────→
-# ```
+# ![Three-pass softmax](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle2.drawio.svg)
 #
 # Each pass reads the entire input from slow HBM. For attention, x is a
 # *row* of the score matrix — and we do this for every row. That's a lot
@@ -387,17 +369,7 @@ else:
 # and we're left with just the new exponentials. The same update rule
 # handles all tiles uniformly — no `k == 0` vs `k > 0` branching needed.
 #
-# ```
-# Tile 0          Tile 1          Tile 2          Tile 3
-# ┌──────┐       ┌──────┐       ┌──────┐       ┌──────┐
-# │ x[0] │  ───→ │ x[1] │  ───→ │ x[2] │  ───→ │ x[3] │
-# └──────┘       └──────┘       └──────┘       └──────┘
-#    │               │               │               │
-# m=-∞, ℓ=0     update m,ℓ     update m,ℓ     update m,ℓ
-#    │               │               │               │
-# m=3.2, ℓ=47   m=3.5, ℓ=89   m=3.5, ℓ=134  m=3.7, ℓ=201
-#                  ↑ correction!              ↑ correction!
-# ```
+# ![Online softmax tile flow](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle3.drawio.svg)
 #
 # After processing all tiles, `m` is the global max and `ℓ` is
 # `sum(exp(x - m))` — exactly what softmax needs. One kernel, one pass.
@@ -528,15 +500,7 @@ else:
 #
 # For a Q block of shape `(bq, H)`, we iterate over KV blocks:
 #
-# ```
-#   Q block       K blocks (iterate →)      Output
-#   ┌──────┐     ┌──────┬──────┬──────┬──────┐     ┌──────┐
-#   │      │     │      │      │      │      │     │      │
-#   │ bq×H │  @  │ bk×H │ bk×H │ bk×H │ bk×H │  →  │ bq×H │
-#   │      │     │      │      │      │      │     │      │
-#   └──────┘     └──────┴──────┴──────┴──────┘     └──────┘
-#                 kv=0    kv=1   kv=2   kv=3
-# ```
+# ![Tiled attention](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle4.drawio.svg)
 #
 # For each KV block, the kernel:
 # 1. Computes scores: `s = einsum('qh,kh->qk', Q_block, K_block) / sqrt(H)` → `(bq, bk)`
@@ -732,23 +696,7 @@ else:
 # `kv ∈ [0, tiles_kv)`, maintaining per-row online softmax statistics.
 # **Each Q block is completely independent — they don't share state.**
 #
-# ```
-#                    K blocks
-#              kv=0  kv=1  kv=2  kv=3
-#            ┌──────┬──────┬──────┬──────┐
-#  Q    i=0  │ s0,0 │ s0,1 │ s0,2 │ s0,3 │ → O[0:bq]     ← grid point (0, *)
-# blocks     ├──────┼──────┼──────┼──────┤
-#       i=1  │ s1,0 │ s1,1 │ s1,2 │ s1,3 │ → O[bq:2*bq]  ← grid point (1, *)
-#            ├──────┼──────┼──────┼──────┤
-#       i=2  │ s2,0 │ s2,1 │ s2,2 │ s2,3 │ → O[2*bq:3*bq] ← grid point (2, *)
-#            ├──────┼──────┼──────┼──────┤
-#       i=3  │ s3,0 │ s3,1 │ s3,2 │ s3,3 │ → O[3*bq:4*bq] ← grid point (3, *)
-#            └──────┴──────┴──────┴──────┘
-#
-# We never materialize the full score matrix!
-# Each block s[i,j] = einsum(Q_block_i, K_block_j) / √H  is (bq × bk)
-# and lives only in SRAM for the duration of that grid point.
-# ```
+# ![Flash attention grid](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle5.drawio.svg)
 #
 # Here's the beautiful part: **the kernel body is identical to Puzzle 4.**
 # Copy it verbatim. The variable `i` is unused inside the kernel — the

@@ -1,0 +1,71 @@
+<mxGraphModel>
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+
+    <!-- Matrix boxes -->
+    <mxCell id="2" value="Q" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="0" y="15" width="50" height="42" as="geometry"/>
+    </mxCell>
+    <mxCell id="3" value="@" style="text;fontSize=14;fontColor=#666666;align=center;" vertex="1" parent="1">
+      <mxGeometry x="52" y="25" width="16" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="4" value="K^T" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="70" y="15" width="50" height="42" as="geometry"/>
+    </mxCell>
+    <mxCell id="5" value="=" style="text;fontSize=14;fontColor=#666666;align=center;" vertex="1" parent="1">
+      <mxGeometry x="122" y="25" width="16" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="6" value="S / √H" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=12;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="140" y="15" width="58" height="42" as="geometry"/>
+    </mxCell>
+    <!-- softmax arrow -->
+    <mxCell id="7" value="softmax" style="fontSize=10;fontStyle=2;fontColor=#666666;endArrow=block;endFill=1;strokeWidth=1;strokeColor=#999999;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="200" y="36" as="sourcePoint"/>
+        <mxPoint x="250" y="36" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+    <mxCell id="8" value="P" style="rounded=1;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="252" y="15" width="50" height="42" as="geometry"/>
+    </mxCell>
+    <mxCell id="9" value="@" style="text;fontSize=14;fontColor=#666666;align=center;" vertex="1" parent="1">
+      <mxGeometry x="304" y="25" width="16" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="10" value="V" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="322" y="15" width="50" height="42" as="geometry"/>
+    </mxCell>
+    <mxCell id="11" value="=" style="text;fontSize=14;fontColor=#666666;align=center;" vertex="1" parent="1">
+      <mxGeometry x="374" y="25" width="16" height="22" as="geometry"/>
+    </mxCell>
+    <mxCell id="12" value="O" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=13;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="392" y="15" width="50" height="42" as="geometry"/>
+    </mxCell>
+
+    <!-- Dimension labels -->
+    <mxCell id="20" value="T × H" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="0" y="60" width="50" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="21" value="H × T" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="70" y="60" width="50" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="22" value="T × T" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="140" y="60" width="58" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="23" value="T × T" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="252" y="60" width="50" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="24" value="T × H" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="322" y="60" width="50" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="25" value="T × H" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="392" y="60" width="50" height="16" as="geometry"/>
+    </mxCell>
+
+    <!-- O(T^2) memory annotation -->
+    <mxCell id="30" value="← O(T²) memory! →" style="text;fontSize=10;fontColor=#b85450;fontStyle=2;align=center;" vertex="1" parent="1">
+      <mxGeometry x="140" y="80" width="162" height="18" as="geometry"/>
+    </mxCell>
+
+  </root>
+</mxGraphModel>

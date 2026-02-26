@@ -1,0 +1,69 @@
+<mxGraphModel>
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+
+    <!-- Headers -->
+    <mxCell id="2" value="Q block" style="text;fontSize=11;fontStyle=1;fontColor=#333333;align=center;" vertex="1" parent="1">
+      <mxGeometry x="0" y="0" width="55" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="3" value="K, V blocks (iterate →)" style="text;fontSize=11;fontStyle=1;fontColor=#333333;align=center;" vertex="1" parent="1">
+      <mxGeometry x="88" y="0" width="192" height="20" as="geometry"/>
+    </mxCell>
+    <mxCell id="4" value="Output" style="text;fontSize=11;fontStyle=1;fontColor=#333333;align=center;" vertex="1" parent="1">
+      <mxGeometry x="330" y="0" width="55" height="20" as="geometry"/>
+    </mxCell>
+
+    <!-- Q block -->
+    <mxCell id="10" value="bq × H" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="0" y="24" width="55" height="50" as="geometry"/>
+    </mxCell>
+
+    <!-- @ operator -->
+    <mxCell id="11" value="@" style="text;fontSize=14;fontColor=#666666;align=center;" vertex="1" parent="1">
+      <mxGeometry x="58" y="38" width="18" height="22" as="geometry"/>
+    </mxCell>
+
+    <!-- K blocks (4 adjacent) -->
+    <mxCell id="20" value="bk×H" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="88" y="24" width="48" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="21" value="bk×H" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="136" y="24" width="48" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="22" value="bk×H" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="184" y="24" width="48" height="50" as="geometry"/>
+    </mxCell>
+    <mxCell id="23" value="bk×H" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="232" y="24" width="48" height="50" as="geometry"/>
+    </mxCell>
+
+    <!-- kv labels -->
+    <mxCell id="30" value="kv=0" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="88" y="76" width="48" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="31" value="kv=1" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="136" y="76" width="48" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="32" value="kv=2" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="184" y="76" width="48" height="16" as="geometry"/>
+    </mxCell>
+    <mxCell id="33" value="kv=3" style="text;fontSize=9;fontColor=#999999;align=center;" vertex="1" parent="1">
+      <mxGeometry x="232" y="76" width="48" height="16" as="geometry"/>
+    </mxCell>
+
+    <!-- → arrow to output -->
+    <mxCell id="40" value="" style="endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#999999;" edge="1" parent="1">
+      <mxGeometry relative="1" as="geometry">
+        <mxPoint x="285" y="49" as="sourcePoint"/>
+        <mxPoint x="325" y="49" as="targetPoint"/>
+      </mxGeometry>
+    </mxCell>
+
+    <!-- Output block -->
+    <mxCell id="41" value="bq × H" style="rounded=1;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="330" y="24" width="55" height="50" as="geometry"/>
+    </mxCell>
+
+  </root>
+</mxGraphModel>
