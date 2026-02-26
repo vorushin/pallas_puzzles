@@ -42,7 +42,7 @@ implementations. Look at existing puzzle/tutorial formats for inspiration
 ### 4. Write puzzles that are fun
 
 - Theory sections build intuition (*why*, not just *what*).
-- ASCII diagrams for anything spatial.
+- Diagrams for anything spatial (see Diagrams section below).
 - Progressive hints: gentle nudge → pattern skeleton → full solution.
 - Inline comments on new APIs in the code skeleton.
 
@@ -55,6 +55,32 @@ implementations. Look at existing puzzle/tutorial formats for inspiration
   `B` batch, `T` query/target seq len, `S` KV seq len, `D` model dim,
   `H` head dim, `N` query heads, `K` KV heads, `F` ff dim, `V` vocab,
   `L` layers, `E` experts.
+
+## Diagrams
+
+Diagrams are draw.io SVGs displayed in Colab via raw GitHub URLs.
+
+**When drafting puzzles**, add a TODO comment describing what the diagram
+should show and why it helps — don't create the diagram yet:
+```python
+# TODO diagram: 4×4 grid showing block categories (FULL/PART/SKIP),
+# row=Q blocks, col=KV blocks. Helps visualize which blocks are skipped.
+```
+
+**When content is stable**, generate all diagrams in one batch using the
+`/drawio` skill. This enables consistent styling across diagrams.
+
+**Files**: `images/<name>.drawio` (editable source) + `images/<name>.drawio.svg`
+(displayed in notebook). Reference in the `.py` notebook as:
+```
+# ![Alt text](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/<name>.drawio.svg)
+```
+
+**Style**: blue (#dae8fc) for inputs/data, yellow (#fff2cc) for
+intermediates, green (#d5e8d4) for outputs, red (#f8cecc) for warnings,
+gray (#f5f5f5) for skip/neutral. Grid diagrams use 55×35 cells with
+fontSize 11-13. Keep diagrams compact — similar footprint to the content
+they illustrate.
 
 ## Reviewing puzzles
 
