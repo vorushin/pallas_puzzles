@@ -329,19 +329,7 @@ else:
 # indexing. This is the power of Pallas's tiling abstraction: the
 # kernel doesn't care whether the grid is 1D, 2D, or 3D.
 #
-# ```
-# Matrix (128×128):
-# ┌────┬────┬────┬────┐
-# │0,0 │0,1 │0,2 │0,3 │  ← row blocks
-# ├────┼────┼────┼────┤
-# │1,0 │1,1 │1,2 │1,3 │
-# ├────┼────┼────┼────┤
-# │2,0 │2,1 │2,2 │2,3 │
-# ├────┼────┼────┼────┤
-# │3,0 │3,1 │3,2 │3,3 │
-# └────┴────┴────┴────┘
-#        32×32 each
-# ```
+# ![2D grid of blocks](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/basics-puzzle4.drawio.svg)
 
 # %%
 M, N = 128, 128
@@ -404,20 +392,10 @@ else:
 # - For `b`: grid `(i, j)` → tile `(j,)` (only depends on col)
 # - For `out`: grid `(i, j)` → tile `(i, j)`
 #
-# ```
-#                       b (N=64)
-#                  b₀ (j=0)    b₁ (j=1)
+# ![Outer product tiling](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/basics-puzzle5.drawio.svg)
 #
-#  a (M=128)  i=0   a₀ × b₀     a₀ × b₁
-#             i=1   a₁ × b₀     a₁ × b₁
-#             i=2   a₂ × b₀     a₂ × b₁
-#             i=3   a₃ × b₀     a₃ × b₁
-#
-#                    output (128×64)
-#
-# Each tile (i,j): a_ref shape (bm,), b_ref shape (bn,)
-#   -> broadcast to (bm, bn) via [:, None] * [None, :]
-# ```
+# Each tile (i,j): `a_ref` shape `(bm,)`, `b_ref` shape `(bn,)`
+# → broadcast to `(bm, bn)` via `[:, None] * [None, :]`
 #
 # Inside the kernel, `a_ref` has shape `(bm,)` and `b_ref` has shape `(bn,)`.
 # You need to broadcast them: `a_ref[...][:, None] * b_ref[...][None, :]`
@@ -694,22 +672,7 @@ else:
 # over K tiles (K for "Kontracting" dimension) and accumulate
 # `A_tile @ B_tile`.
 #
-# ```
-#   A (128×256)              B (256×128)           C (128×128)
-#   ┌──────────┬──────────┐  ┌──────────┬────────┐  ┌────────┬────────┐
-#   │   A0,0   │   A0,1   │  │   B0,0   │  B0,1  │  │  C0,0  │  C0,1  │
-#   │  64×128  │  64×128  │  │  128×64  │ 128×64 │  │  64×64 │  64×64 │
-#   ├──────────┼──────────┤  ├──────────┼────────┤  ├────────┼────────┤
-#   │   A1,0   │   A1,1   │  │   B1,0   │  B1,1  │  │  C1,0  │  C1,1  │
-#   │  64×128  │  64×128  │  │  128×64  │ 128×64 │  │  64×64 │  64×64 │
-#   └──────────┴──────────┘  └──────────┴────────┘  └────────┴────────┘
-#
-# To compute C[0,0], sweep k over the K dimension:
-#
-#   k=0: acc  = A0,0 @ B0,0   (64×128) @ (128×64) → (64×64)
-#   k=1: acc += A0,1 @ B1,0   (64×128) @ (128×64) → (64×64)
-#         └─→ store acc → C[0,0]
-# ```
+# ![Tiled matmul block decomposition](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/basics-puzzle8.drawio.svg)
 #
 # We use **scratch memory** (`scratch_shapes`) for the accumulator.
 # Scratch is allocated in **VMEM** — TPU's fast on-chip SRAM (like shared
@@ -951,21 +914,7 @@ else:
 # The grid adds a **batch dimension**: `grid = (G,)`.
 # Each iteration's BlockSpec selects one batch element at a time.
 #
-# ```
-#  lhs (G,M,K)          rhs (G,K,N)          out (G,M,N)
-#  ┌───────────┐        ┌──────────┐         ┌──────────┐
-#  │ g=0  M×K  │──┐     │ g=0 K×N  │──┐      │ g=0 M×N  │
-#  ├───────────┤  │     ├──────────┤  │      ├──────────┤
-#  │ g=1  M×K  │  │     │ g=1 K×N  │  │      │ g=1 M×N  │
-#  ├───────────┤  │     ├──────────┤  │      ├──────────┤
-#  │ g=2  M×K  │  │     │ g=2 K×N  │  │      │ g=2 M×N  │
-#  ├───────────┤  │     ├──────────┤  │      ├──────────┤
-#  │ g=3  M×K  │  │     │ g=3 K×N  │  │      │ g=3 M×N  │
-#  └───────────┘  │     └──────────┘  │      └──────────┘
-#                 │                   │
-#  Grid iter g=0: └──→ lhs_ref(M,K) @ rhs_ref(K,N) ──→ o_ref(M,N)
-#                      ▲ batch dim squeezed by None
-# ```
+# ![Batched matmul with group dimension](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/basics-puzzle10.drawio.svg)
 #
 # **`None` vs integer in block_shape**: Using `None` means "load the entire
 # axis and **squeeze** that dimension". The ref will NOT have that dim.
