@@ -902,23 +902,7 @@ else:
 # When we tile the score matrix into blocks, each block falls into one of
 # three categories:
 #
-# ```
-#              KV blocks
-#           kv=0  kv=1  kv=2  kv=3
-#         ┌──────┬──────┬──────┬──────┐
-#    i=0  │ PART │ SKIP │ SKIP │ SKIP │
-#         ├──────┼──────┼──────┼──────┤
-#    i=1  │ FULL │ PART │ SKIP │ SKIP │
-#  Q      ├──────┼──────┼──────┼──────┤
-# blocks  │ FULL │ FULL │ PART │ SKIP │
-#    i=2  ├──────┼──────┼──────┼──────┤
-#    i=3  │ FULL │ FULL │ FULL │ PART │
-#         └──────┴──────┴──────┴──────┘
-#
-#  FULL  = all positions visible → compute normally
-#  PART  = diagonal block → apply element-wise mask
-#  SKIP  = all positions masked → skip entirely (don't load K,V!)
-# ```
+# ![Causal mask block categories](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle6.drawio.svg)
 #
 # **When to skip**: Block `(i, kv)` is entirely above the diagonal when
 # the **first Q row** in the block (= `i * bq`) is less than the **last
