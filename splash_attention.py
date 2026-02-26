@@ -42,14 +42,12 @@
 
 # %%
 #@title Install dependencies
-# !pip install -q jax jaxtyping
+# !pip install -q jax
 
 # %%
 #@title Imports
-import functools
 import jax
 import jax.numpy as jnp
-from jax import lax
 from jax.experimental import pallas as pl
 from jax.experimental.pallas import tpu as pltpu
 print(f"JAX {jax.__version__}")
@@ -106,6 +104,16 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
         print(f"  Got      (first {n}):\n{actual[:n]}")
 
 
+# %%
+#@title attention_spec() — reference implementation (used by test cells)
+def attention_spec(Q, K, V):
+    """Standard dot-product attention: softmax(Q @ K.T / sqrt(d)) @ V"""
+    d = Q.shape[-1]
+    S = Q @ K.T / jnp.sqrt(d).astype(Q.dtype)
+    P = jax.nn.softmax(S, axis=-1)
+    return P @ V
+
+
 # %% [markdown]
 # ---
 # # Part I: Flash Attention (Puzzles 1–5)
@@ -115,7 +123,8 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 # ## Puzzle 1: Dot-Product Attention
 #
 # **Goal**: Implement the standard attention equation in pure JAX (no Pallas
-# yet). This is the **reference spec** that all later kernels must match.
+# yet). This gives you hands-on familiarity with the formula before we start
+# tiling it.
 #
 # ### Theory
 #
@@ -133,14 +142,14 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 # materialize this matrix.
 #
 # ```
-# Q (T×d)     K^T (d×T)       S (T×T)          P (T×T)          O (T×d)
-# ┌──────┐   ┌──────────┐   ┌───────────┐    ┌───────────┐    ┌──────┐
-# │      │   │          │   │           │    │ softmax   │    │      │
-# │      │ @ │          │ = │  S / √d   │ →  │  rows     │ @  V  =  │  O   │
-# │      │   │          │   │           │    │           │    │      │
-# └──────┘   └──────────┘   └───────────┘    └───────────┘    └──────┘
-#  T × d       d × T          T × T            T × T           T × d
-#                            ← O(T²) memory! →
+# Q (T×d)    K^T (d×T)      S (T×T)         P (T×T)       V (T×d)   O (T×d)
+# ┌──────┐  ┌──────────┐  ┌───────────┐  ┌───────────┐  ┌──────┐  ┌──────┐
+# │      │  │          │  │           │  │ softmax   │  │      │  │      │
+# │      │@ │          │= │  S / √d   │→ │  rows     │@ │      │= │  O   │
+# │      │  │          │  │           │  │           │  │      │  │      │
+# └──────┘  └──────────┘  └───────────┘  └───────────┘  └──────┘  └──────┘
+#  T × d      d × T         T × T          T × T        T × d     T × d
+#                          ← O(T²) memory! →
 # ```
 #
 # Let's start by implementing this naive version, then spend the rest of the
@@ -154,15 +163,6 @@ d1 = 64     # head dimension (per head)
 Q1 = jax.random.normal(jax.random.key(0), (T1, d1))
 K1 = jax.random.normal(jax.random.key(1), (T1, d1))
 V1 = jax.random.normal(jax.random.key(2), (T1, d1))
-
-
-# --- Reference ---
-def attention_spec(Q, K, V):
-    """Standard dot-product attention: softmax(Q @ K.T / sqrt(d)) @ V"""
-    d = Q.shape[-1]
-    S = Q @ K.T / jnp.sqrt(d).astype(Q.dtype)
-    P = jax.nn.softmax(S, axis=-1)
-    return P @ V
 
 
 # --- Your implementation ---
@@ -189,14 +189,12 @@ else:
         print(f"  Max error: {float(jnp.max(jnp.abs(actual1 - expected1))):.6f}")
 
 # %% [markdown]
-# <details><summary>Hint 1 of 2 — Step by step</summary>
+# <details><summary>Hint 1 of 2 — Which JAX functions?</summary>
 #
-# ```python
-# d = Q.shape[-1]
-# S = Q @ K.T / jnp.sqrt(d).astype(Q.dtype)   # (T, T) scores
-# P = jax.nn.softmax(S, axis=-1)                # (T, T) weights
-# return P @ V                                   # (T, d) output
-# ```
+# You need three operations:
+# - `Q @ K.T` for matrix multiply, scaled by `1 / jnp.sqrt(d)`
+# - `jax.nn.softmax(..., axis=-1)` to normalize rows
+# - One more `@` to multiply weights by V
 # </details>
 #
 # <details><summary>Hint 2 of 2 — Full solution</summary>
@@ -987,17 +985,18 @@ def causal_flash_kernel(
 
     Grid: (tiles_q6, tiles_kv6)
 
-    You need to handle three cases:
-    - SKIP: i * bq6 < kv * bk6 → do nothing
-    - FULL: (i + 1) * bq6 > (kv + 1) * bk6 → normal flash attention
-    - PARTIAL: diagonal block → apply causal mask to scores
+    Block (i, kv) falls into one of two cases:
+    - SKIP: i * bq6 < kv * bk6 → entirely above diagonal, do nothing
+    - COMPUTE: otherwise → apply causal mask and do flash attention
+      (the causal mask is all-True for blocks fully below the diagonal,
+       so you don't need to special-case FULL vs PARTIAL)
     """
     i = pl.program_id(0)
     kv = pl.program_id(1)
     pass  # YOUR CODE HERE
     # 1. Init on kv == 0 (same as Puzzle 5)
-    # 2. Determine if this block should be skipped
-    # 3. @pl.when(should_compute): compute scores, apply mask if needed,
+    # 2. Determine if this block should be skipped: i * bq6 < kv * bk6
+    # 3. @pl.when(should_compute): compute scores, apply causal mask,
     #    do online softmax update
     # 4. Normalize on last kv block
 
@@ -1093,9 +1092,9 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 # ---
 # ## Puzzle 7: Block-Sparse Masks and Prefetch Maps
 #
-# **Goal**: Generalize causal masking to **arbitrary block-sparse patterns**.
-# Use a `block_mask` array to classify blocks and a `data_next` map to
-# iterate only over non-skipped blocks.
+# **Goal**: Replace hardcoded causal logic with a **data-driven block mask**.
+# Use a `block_mask` array to classify blocks and a `partial_masks` array
+# for per-element masks on partial blocks.
 #
 # ### Theory
 #
@@ -1134,8 +1133,11 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 # ```
 #
 # For the mask itself on partial blocks, we precompute per-element mask
-# arrays and store them in `partial_mask_blocks`. The kernel looks up which
-# partial mask to use for diagonal blocks.
+# arrays and store them in `partial_masks`. For causal masking, there is
+# exactly one partial block per Q row (the diagonal), so we can index
+# the partial mask by `i` (the Q block index). A fully general
+# implementation would need an additional index map from `(i, kv)` to
+# partial mask index — the production splash attention code does this.
 #
 # **Why precompute the mask?** On TPU, branches are expensive. By
 # precomputing block_mask on the host, the kernel just reads integers and
@@ -1288,8 +1290,8 @@ else:
 #
 # <details><summary>Hint 2 of 3 — Applying partial masks</summary>
 #
-# For causal masking, the partial block for Q block `i` is at index `i`
-# in partial_masks_ref:
+# For causal masking, the diagonal block for Q block `i` is always the
+# `i`-th partial mask (one partial block per row, on the diagonal):
 # ```python
 # mask = partial_masks_ref[i]  # (bq7, bk7) boolean mask
 # s = jnp.where(mask, s, -jnp.inf)
@@ -1323,7 +1325,8 @@ else:
 #         v = v_ref[...]
 #         s = q @ k.T / jnp.sqrt(d7).astype(jnp.float32)
 #
-#         # Apply partial mask for diagonal blocks
+#         # Apply partial mask for diagonal blocks.
+#         # For causal: block i has partial mask i (one per Q row).
 #         is_partial = (block_type == 1)
 #         mask = partial_masks_ref[i]
 #         # Use mask only when partial; for full blocks, keep all scores
@@ -1599,6 +1602,7 @@ else:
 #         v = v_ref[...]
 #         s = q @ k.T / jnp.sqrt(d8).astype(jnp.float32)
 #
+#         # For causal: Q block i → partial mask i (one per row)
 #         is_partial = (block_type == 1)
 #         mask = partial_masks_ref[i]
 #         s = jnp.where(is_partial & ~mask, -jnp.inf, s)
@@ -1621,7 +1625,7 @@ else:
 
 # %% [markdown]
 # ---
-# # TODO: Backward Pass
+# # What's Next: Backward Pass
 #
 # The backward pass for splash attention is what makes it truly
 # production-ready. Here's what those puzzles would cover:
