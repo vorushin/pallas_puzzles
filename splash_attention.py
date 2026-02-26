@@ -34,8 +34,8 @@
 #
 # | Part | Puzzles | Focus |
 # |------|---------|-------|
-# | V — Flash Attention | 1–5 | Attention, online softmax, tiled flash attention |
-# | VI — Splash Attention | 6–8 | Causal masks, block-sparse dispatch, full splash |
+# | I — Flash Attention | 1–5 | Attention, online softmax, tiled flash attention |
+# | II — Splash Attention | 6–8 | Causal masks, block-sparse dispatch, full splash |
 
 # %% [markdown]
 # ## Setup
@@ -105,7 +105,7 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 
 # %% [markdown]
 # ---
-# # Part V: Flash Attention (Puzzles 1–5)
+# # Part I: Flash Attention (Puzzles 1–5)
 
 # %% [markdown]
 # ---
@@ -1087,7 +1087,7 @@ check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
 
 # %% [markdown]
 # ---
-# # Part VI: Splash Attention (Puzzles 6–8)
+# # Part II: Splash Attention (Puzzles 6–8)
 #
 # Flash attention processes every KV block for every Q block.
 # But many attention patterns have **structure** — causal masking, sliding
