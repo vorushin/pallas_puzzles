@@ -663,6 +663,26 @@ check(rowsum_kernel, rowsum_spec, (x7,),
 # over K tiles (K for "Kontracting" dimension) and accumulate
 # `A_tile @ B_tile`.
 #
+# ```
+#    A (128×256)         B (256×128)        C (128×128)
+#    K=256 → 2 tiles     N=128 → 2 tiles
+#    ┌───────┬───────┐   ┌───┬───┐         ┌───┬───┐
+#    │ A0,0  │ A0,1  │   │B0,0│B0,1│        │C0,0│C0,1│
+#    │ 64×128│ 64×128│   │128│128 │        │64 │64  │
+#    ├───────┼───────┤   │×64│×64 │        │×64│×64 │
+#    │ A1,0  │ A1,1  │   ├───┼───┤         ├───┼───┤
+#    │ 64×128│ 64×128│   │B1,0│B1,1│        │C1,0│C1,1│
+#    └───────┴───────┘   │128│128 │        │64 │64  │
+#    M=128 → 2 tiles     │×64│×64 │        │×64│×64 │
+#                        └───┴───┘         └───┴───┘
+#
+# To compute C[0,0], sweep k=0..1:
+#
+#   k=0: acc  = A0,0 @ B0,0    (64×128) @ (128×64) → (64×64)
+#   k=1: acc += A0,1 @ B1,0    (64×128) @ (128×64) → (64×64)
+#         └─→ store acc → C[0,0]
+# ```
+#
 # We use **scratch memory** (`scratch_shapes`) for the accumulator.
 # Scratch is allocated in **VMEM** — TPU's fast on-chip SRAM (like shared
 # memory on GPU). Why not just accumulate directly in `o_ref`? Two reasons:
@@ -701,26 +721,6 @@ check(rowsum_kernel, rowsum_spec, (x7,),
 # On TPU hardware, `@pl.when` compiles to predicated execution — no branch
 # divergence penalty. This zero/accumulate/store pattern is used in every
 # production Pallas kernel.
-#
-# ```
-#    A (128×256)         B (256×128)        C (128×128)
-#    K=256 → 2 tiles     N=128 → 2 tiles
-#    ┌───────┬───────┐   ┌───┬───┐         ┌───┬───┐
-#    │ A0,0  │ A0,1  │   │B0,0│B0,1│        │C0,0│C0,1│
-#    │ 64×128│ 64×128│   │128│128 │        │64 │64  │
-#    ├───────┼───────┤   │×64│×64 │        │×64│×64 │
-#    │ A1,0  │ A1,1  │   ├───┼───┤         ├───┼───┤
-#    │ 64×128│ 64×128│   │B1,0│B1,1│        │C1,0│C1,1│
-#    └───────┴───────┘   │128│128 │        │64 │64  │
-#    M=128 → 2 tiles     │×64│×64 │        │×64│×64 │
-#                        └───┴───┘         └───┴───┘
-#
-# To compute C[0,0], sweep k=0..1:
-#
-#   k=0: acc  = A0,0 @ B0,0    (64×128) @ (128×64) → (64×64)
-#   k=1: acc += A0,1 @ B1,0    (64×128) @ (128×64) → (64×64)
-#         └─→ store acc → C[0,0]
-# ```
 
 # %%
 M8, K8, N8 = 128, 256, 128
