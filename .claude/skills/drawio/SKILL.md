@@ -1,13 +1,13 @@
 ---
 name: drawio
-description: Use when creating or editing draw.io diagrams — generates mxGraphModel XML, exports to JPG/SVG/PDF, and visually reviews the result for elegance and correctness, iterating until the diagram fits its purpose
+description: Use when creating or editing draw.io diagrams — generates mxGraphModel XML, exports to JPG for visual review, iterates until elegant, then produces final SVG for the notebook
 ---
 
 # Draw.io Diagram Skill
 
-Generate draw.io diagrams as native `.drawio` files with visual review. Every diagram is exported to JPG and visually inspected, iterating until it is elegant, readable, and correct.
+Generate draw.io diagrams as native `.drawio` files with visual review. Every diagram is exported to JPG and visually inspected, iterating until it is elegant, readable, and correct. The final deliverable is an SVG in the notebook.
 
-**IMPORTANT: Always use JPG (not PNG) for the internal review loop.** Claude Code gets API Error 400 when reading PNG files exported by draw.io. JPG works reliably. The user can later re-export from the `.drawio` source to any format they need.
+**IMPORTANT: Always use JPG (not PNG) for the internal review loop.** Claude Code gets API Error 400 when reading PNG files exported by draw.io. JPG works reliably.
 
 ## Core Workflow
 
@@ -16,7 +16,12 @@ Generate draw.io diagrams as native `.drawio` files with visual review. Every di
 3. **Export to JPG** using the draw.io CLI (`-f jpg`)
 4. **Visually review** — use the Read tool on the JPG to inspect the rendered diagram
 5. **Iterate** — if anything is off (overlaps, bad spacing, unclear flow, ugly styling), edit the `.drawio` file and re-export. Repeat until satisfied.
-6. **Deliver** — report the final result to the user. If they requested a specific format (SVG, PDF), export to that format too.
+6. **Deliver** — once the diagram looks good:
+   a. Export a **plain SVG** (no embedded diagram XML) to `images/<name>.drawio.svg`
+   b. Move the `.drawio` source to `images/<name>.drawio` (keep as editable original)
+   c. Add the SVG to the notebook as a markdown image using the raw GitHub URL:
+      `![Alt text](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/<name>.drawio.svg)`
+   d. Delete the temporary JPG (it was only for review)
 
 ## Visual Review Checklist
 
@@ -33,26 +38,13 @@ After each export, inspect the JPG and check:
 
 If any check fails, fix the XML and re-export. There is no limit on iterations.
 
-## Output Format
+## Final Output
 
-Check the user's request for a format preference:
+Two files saved to `images/`:
+- `images/<name>.drawio` — editable source (open in draw.io)
+- `images/<name>.drawio.svg` — plain SVG for display (no embedded XML metadata)
 
-- `create a flowchart` → `flowchart.drawio` + `flowchart.drawio.jpg` (for review)
-- `svg: ER diagram` → `er-diagram.drawio` + `er-diagram.drawio.jpg` (for review) + `er-diagram.drawio.svg` (deliverable)
-- `pdf architecture overview` → `architecture-overview.drawio` + `architecture-overview.drawio.jpg` (for review) + `architecture-overview.drawio.pdf` (deliverable)
-
-Always export a JPG for visual review. The user can re-export from the `.drawio` source to any format they need.
-
-### Supported export formats
-
-| Format | Embed XML | Notes |
-|--------|-----------|-------|
-| `jpg`  | No        | **Use for visual review** — Claude Code reads JPG reliably |
-| `png`  | Yes (`-e`) | DO NOT use for review (causes API Error 400 in Claude Code) |
-| `svg`  | Yes (`-e`) | Scalable, editable in draw.io |
-| `pdf`  | Yes (`-e`) | Printable, editable in draw.io |
-
-PNG, SVG, and PDF support `--embed-diagram` — the exported file contains the full diagram XML, so opening it in draw.io recovers the editable diagram. JPG does not support embedding.
+The SVG is referenced in the notebook via raw GitHub URL for Colab rendering.
 
 ## draw.io CLI
 
@@ -64,39 +56,34 @@ Try `drawio` first (works if on PATH), then fall back to:
 
 Use `which drawio` to check if it's on PATH before falling back.
 
-### Export command
+### Export commands
 
-For visual review (JPG — no embed support):
+For visual review (JPG):
 ```bash
-drawio -x -f jpg -b 10 -o <output.drawio.jpg> <input.drawio>
+drawio -x -f jpg -b 10 -o <name>.drawio.jpg <name>.drawio
 ```
 
-For user-requested formats (with embedded diagram XML):
+For final deliverable (plain SVG, no embedded metadata):
 ```bash
-drawio -x -f <svg|pdf> -e -b 10 -o <output> <input.drawio>
+drawio -x -f svg -b 10 -o images/<name>.drawio.svg <name>.drawio
 ```
 
 Key flags:
 - `-x` / `--export`: export mode
-- `-f` / `--format`: output format (jpg, svg, pdf)
-- `-e` / `--embed-diagram`: embed diagram XML in output (not supported for jpg)
+- `-f` / `--format`: output format (`jpg` for review, `svg` for final)
 - `-o` / `--output`: output file path
 - `-b` / `--border`: border width around diagram (default: 0)
 - `-s` / `--scale`: scale the diagram size
 - `--width` / `--height`: fit into specified dimensions (preserves aspect ratio)
 
-### Opening the result
-
-```bash
-open <file>
-```
+Do NOT use `-e` / `--embed-diagram` for SVG — we want a clean SVG without embedded XML.
 
 ## File Naming
 
 - Descriptive filename based on diagram content (e.g., `login-flow`, `database-schema`)
 - Lowercase with hyphens for multi-word names
-- Double extensions for exports: `name.drawio.jpg`, `name.drawio.svg`
-- Keep the `.drawio` source file — it is the editable original
+- Double extensions for exports: `name.drawio.svg`
+- Both `.drawio` source and `.drawio.svg` final go in `images/`
 
 ## XML Format
 
