@@ -1367,23 +1367,7 @@ else:
 # over the **non-skip** blocks. A precomputed `data_next` array tells
 # each grid iteration which KV block to process.
 #
-# ```
-#    Regular grid (Puzzle 7):          Compacted grid (Puzzle 8):
-#
-#    kv: 0  1  2  3                    step: 0    1
-#    ┌──┬──┬──┬──┐                     ┌──────┬──────┐
-#    │ P│ S│ S│ S│  → 4 iterations     │ kv=0 │      │  → 2 iterations
-#    ├──┼──┼──┼──┤                     │(PART)│      │    (skip nothing!)
-#    │ F│ P│ S│ S│  → 4 iterations     ├──────┼──────┤
-#    ├──┼──┼──┼──┤                     │ kv=0 │ kv=1 │  → 2 iterations
-#    │ F│ F│ P│ S│  → 4 iterations     │(FULL)│(PART)│
-#    ├──┼──┼──┼──┤                     ├──────┼──────┤
-#    │ F│ F│ F│ P│  → 4 iterations     │ kv=0 │ kv=1 │
-#    └──┴──┴──┴──┘                     │(FULL)│(FULL)│  etc.
-#    16 total iterations               └──────┴──────┘
-#    (10 are SKIP!)                    10 total iterations
-#                                      (0 wasted!)
-# ```
+# ![Regular vs compacted grid](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle8.drawio.jpg)
 #
 # **How it works**: We precompute:
 # - `data_next[i, step]`: which KV block index to load at step `step`
