@@ -73,6 +73,21 @@ Puzzles can be hard, but they should never be frustrating or dry.
   with `pass  # YOUR CODE HERE`, test cell, hints in `<details>` blocks
 - Use puzzle-number suffixes on variables to avoid collisions (e.g., `M3`, `bm3`)
 - Cross-file references: "basics.py Puzzle 8" not just "Puzzle 8"
+- Use dimension names from [How to Scale Your Model](https://jax-ml.github.io/scaling-book/transformers/):
+
+  | Symbol | Meaning |
+  |--------|---------|
+  | `B` | Batch size |
+  | `T` | Query/target sequence length |
+  | `S` | Key/value sequence length |
+  | `D` | Model dimension (d_model) |
+  | `H` | Head dimension |
+  | `N` | Number of query heads |
+  | `K` | Number of KV heads |
+  | `F` | Feedforward dimension (d_ff) |
+  | `V` | Vocabulary size |
+  | `L` | Number of layers |
+  | `E` | Number of experts (MoE) |
 
 ## Reviewing puzzles
 

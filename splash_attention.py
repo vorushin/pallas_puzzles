@@ -107,9 +107,9 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 # %%
 #@title attention_spec() — reference implementation (used by test cells)
 def attention_spec(Q, K, V):
-    """Standard dot-product attention: softmax(Q @ K.T / sqrt(d)) @ V"""
-    d = Q.shape[-1]
-    S = Q @ K.T / jnp.sqrt(d).astype(Q.dtype)
+    """Standard dot-product attention: softmax(Q @ K.T / sqrt(H)) @ V"""
+    H = Q.shape[-1]
+    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
     P = jax.nn.softmax(S, axis=-1)
     return P @ V
 
@@ -130,25 +130,26 @@ def attention_spec(Q, K, V):
 #
 # Attention maps a query against a set of key-value pairs:
 #
-# $$\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{Q K^T}{\sqrt{d}}\right) V$$
+# $$\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{Q K^T}{\sqrt{H}}\right) V$$
 #
-# where $Q, K, V \in \mathbb{R}^{T \times d}$, $T$ is the sequence length
-# and $d$ is the head dimension.
+# where $Q, K, V \in \mathbb{R}^{T \times H}$, $T$ is the sequence length
+# and $H$ is the head dimension (following the naming convention from
+# [How to Scale Your Model](https://jax-ml.github.io/scaling-book/transformers/)).
 #
-# The score matrix $S = Q K^T / \sqrt{d}$ has shape $(T, T)$ — that's the
+# The score matrix $S = Q K^T / \sqrt{H}$ has shape $(T, T)$ — that's the
 # **O(T²) memory bottleneck** we'll learn to eliminate. For a 4K-token
 # sequence with 64-dim heads, $S$ alone is 64 MB in float32. At 128K tokens
 # (common in modern LLMs), it would be **64 GB**. Clearly we can't
 # materialize this matrix.
 #
 # ```
-# Q (T×d)    K^T (d×T)      S (T×T)         P (T×T)       V (T×d)   O (T×d)
+# Q (T×H)    K^T (H×T)      S (T×T)         P (T×T)       V (T×H)   O (T×H)
 # ┌──────┐  ┌──────────┐  ┌───────────┐  ┌───────────┐  ┌──────┐  ┌──────┐
 # │      │  │          │  │           │  │ softmax   │  │      │  │      │
-# │      │@ │          │= │  S / √d   │→ │  rows     │@ │      │= │  O   │
+# │      │@ │          │= │  S / √H   │→ │  rows     │@ │      │= │  O   │
 # │      │  │          │  │           │  │           │  │      │  │      │
 # └──────┘  └──────────┘  └───────────┘  └───────────┘  └──────┘  └──────┘
-#  T × d      d × T         T × T          T × T        T × d     T × d
+#  T × H      H × T         T × T          T × T        T × H     T × H
 #                          ← O(T²) memory! →
 # ```
 #
@@ -158,19 +159,19 @@ def attention_spec(Q, K, V):
 
 # %%
 T1 = 128    # sequence length
-d1 = 64     # head dimension (per head)
+H1 = 64     # head dimension
 
-Q1 = jax.random.normal(jax.random.key(0), (T1, d1))
-K1 = jax.random.normal(jax.random.key(1), (T1, d1))
-V1 = jax.random.normal(jax.random.key(2), (T1, d1))
+Q1 = jax.random.normal(jax.random.key(0), (T1, H1))
+K1 = jax.random.normal(jax.random.key(1), (T1, H1))
+V1 = jax.random.normal(jax.random.key(2), (T1, H1))
 
 
 # --- Your implementation ---
 def my_attention(Q, K, V):
-    """Implement: softmax(Q @ K.T / sqrt(d)) @ V
+    """Implement: softmax(Q @ K.T / sqrt(H)) @ V
 
     Steps:
-      1. Compute scores S = Q @ K^T, scaled by 1/sqrt(d)
+      1. Compute scores S = Q @ K^T, scaled by 1/sqrt(H)
       2. Apply softmax along the last axis (over keys)
       3. Multiply the attention weights P by V
     """
@@ -192,7 +193,7 @@ else:
 # <details><summary>Hint 1 of 2 — Which JAX functions?</summary>
 #
 # You need three operations:
-# - `Q @ K.T` for matrix multiply, scaled by `1 / jnp.sqrt(d)`
+# - `Q @ K.T` for matrix multiply, scaled by `1 / jnp.sqrt(H)`
 # - `jax.nn.softmax(..., axis=-1)` to normalize rows
 # - One more `@` to multiply weights by V
 # </details>
@@ -201,8 +202,8 @@ else:
 #
 # ```python
 # def my_attention(Q, K, V):
-#     d = Q.shape[-1]
-#     S = Q @ K.T / jnp.sqrt(d).astype(Q.dtype)
+#     H = Q.shape[-1]
+#     S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
 #     P = jax.nn.softmax(S, axis=-1)
 #     return P @ V
 # ```
@@ -548,20 +549,20 @@ else:
 # Now we combine online softmax with tiled matmul. This is the **core loop**
 # of flash attention — processing one Q block against all KV blocks.
 #
-# For a Q block of shape `(bq, d)`, we iterate over KV blocks:
+# For a Q block of shape `(bq, H)`, we iterate over KV blocks:
 #
 # ```
 #   Q block       K blocks (iterate →)      Output
 #   ┌──────┐     ┌──────┬──────┬──────┬──────┐     ┌──────┐
 #   │      │     │      │      │      │      │     │      │
-#   │ bq×d │  @  │ bk×d │ bk×d │ bk×d │ bk×d │  →  │ bq×d │
+#   │ bq×H │  @  │ bk×H │ bk×H │ bk×H │ bk×H │  →  │ bq×H │
 #   │      │     │      │      │      │      │     │      │
 #   └──────┘     └──────┴──────┴──────┴──────┘     └──────┘
 #                 kv=0    kv=1   kv=2   kv=3
 # ```
 #
 # For each KV block, the kernel:
-# 1. Computes scores: `s = Q_block @ K_block.T / sqrt(d)` → `(bq, bk)`
+# 1. Computes scores: `s = Q_block @ K_block.T / sqrt(H)` → `(bq, bk)`
 # 2. Updates online softmax stats `(m, ℓ)` per row
 # 3. **Corrects** the running output accumulator for the new max
 # 4. Adds new contribution: `acc += P_block @ V_block`
@@ -573,7 +574,7 @@ else:
 #
 # ```python
 # correction = exp(m_old - m_new)     # (bq,) per-row correction
-# acc = acc * correction[:, None]     # rescale all d columns
+# acc = acc * correction[:, None]     # rescale all H columns
 # acc += P_block @ V_block            # add new contribution
 # ```
 #
@@ -582,37 +583,37 @@ else:
 # and need to divide by the total `ℓ = sum(exp(s - m))` at the end.)
 #
 # **Scratch memory** holds three things:
-# - `acc`: `(bq, d)` — running output accumulator
+# - `acc`: `(bq, H)` — running output accumulator
 # - `m`: `(bq,)` — running max per row
 # - `l`: `(bq,)` — running sum of exponentials per row
 
 # %%
 T4 = 128      # sequence length
-d4 = 64       # head dimension
+H4 = 64       # head dimension
 bq4 = 32      # Q block size
 bk4 = 32      # KV block size
 tiles_kv4 = T4 // bk4
 
-Q4 = jax.random.normal(jax.random.key(30), (T4, d4))
-K4 = jax.random.normal(jax.random.key(31), (T4, d4))
-V4 = jax.random.normal(jax.random.key(32), (T4, d4))
+Q4 = jax.random.normal(jax.random.key(30), (T4, H4))
+K4 = jax.random.normal(jax.random.key(31), (T4, H4))
+V4 = jax.random.normal(jax.random.key(32), (T4, H4))
 
 # --- Reference: attention for just the first Q block ---
 def attention_one_block_spec(Q, K, V):
     """Attention output for first bq4 rows only."""
-    q_block = Q[:bq4]                          # (bq4, d4)
-    S = q_block @ K.T / jnp.sqrt(d4).astype(Q.dtype)  # (bq4, T4)
+    q_block = Q[:bq4]                          # (bq4, H4)
+    S = q_block @ K.T / jnp.sqrt(H4).astype(Q.dtype)  # (bq4, T4)
     P = jax.nn.softmax(S, axis=-1)             # (bq4, T4)
-    return P @ V                               # (bq4, d4)
+    return P @ V                               # (bq4, H4)
 
 
 # --- Kernel: tiled attention for one Q block ---
 def tiled_attention_one_block_kernel(
-    q_ref,      # (bq4, d4) — the Q block (same for all KV iterations)
-    k_ref,      # (bk4, d4) — one KV block
-    v_ref,      # (bk4, d4) — one KV block
-    o_ref,      # (bq4, d4) — output
-    acc_ref,    # (bq4, d4) — scratch: running output accumulator
+    q_ref,      # (bq4, H4) — the Q block (same for all KV iterations)
+    k_ref,      # (bk4, H4) — one KV block
+    v_ref,      # (bk4, H4) — one KV block
+    o_ref,      # (bq4, H4) — output
+    acc_ref,    # (bq4, H4) — scratch: running output accumulator
     m_ref,      # (bq4,)    — scratch: running row max
     l_ref,      # (bq4,)    — scratch: running row sum_exp
 ):
@@ -623,7 +624,7 @@ def tiled_attention_one_block_kernel(
     kv = pl.program_id(0)
     pass  # YOUR CODE HERE
     # 1. On first KV block: init acc=0, m=-inf, l=0
-    # 2. Compute scores: s = q @ k.T / sqrt(d4)       → (bq4, bk4)
+    # 2. Compute scores: s = q @ k.T / sqrt(H4)       → (bq4, bk4)
     # 3. Compute row-wise max of scores: m_tile        → (bq4,)
     # 4. Update running max: m_new = max(m, m_tile)    → (bq4,)
     # 5. Correction factor: corr = exp(m - m_new)      → (bq4,)
@@ -642,14 +643,14 @@ actual4 = pl.pallas_call(
     tiled_attention_one_block_kernel,
     grid=(tiles_kv4,),
     in_specs=[
-        pl.BlockSpec((bq4, d4), lambda kv: (0, 0)),       # Q: always first block
-        pl.BlockSpec((bk4, d4), lambda kv: (kv, 0)),      # K: iterate over blocks
-        pl.BlockSpec((bk4, d4), lambda kv: (kv, 0)),      # V: iterate over blocks
+        pl.BlockSpec((bq4, H4), lambda kv: (0, 0)),       # Q: always first block
+        pl.BlockSpec((bk4, H4), lambda kv: (kv, 0)),      # K: iterate over blocks
+        pl.BlockSpec((bk4, H4), lambda kv: (kv, 0)),      # V: iterate over blocks
     ],
-    out_specs=pl.BlockSpec((bq4, d4), lambda kv: (0, 0)),
-    out_shape=jax.ShapeDtypeStruct((bq4, d4), jnp.float32),
+    out_specs=pl.BlockSpec((bq4, H4), lambda kv: (0, 0)),
+    out_shape=jax.ShapeDtypeStruct((bq4, H4), jnp.float32),
     scratch_shapes=[
-        pltpu.VMEM((bq4, d4), jnp.float32),    # acc
+        pltpu.VMEM((bq4, H4), jnp.float32),    # acc
         pltpu.VMEM((bq4,), jnp.float32),        # m
         pltpu.VMEM((bq4,), jnp.float32),        # l
     ],
@@ -670,14 +671,14 @@ else:
 # ```python
 # @pl.when(kv == 0)
 # def _init():
-#     acc_ref[...] = jnp.zeros((bq4, d4), dtype=jnp.float32)
+#     acc_ref[...] = jnp.zeros((bq4, H4), dtype=jnp.float32)
 #     m_ref[...] = jnp.full((bq4,), -jnp.inf, dtype=jnp.float32)
 #     l_ref[...] = jnp.zeros((bq4,), dtype=jnp.float32)
 #
 # q = q_ref[...]
 # k = k_ref[...]
 # v = v_ref[...]
-# s = q @ k.T / jnp.sqrt(d4).astype(jnp.float32)  # (bq4, bk4)
+# s = q @ k.T / jnp.sqrt(H4).astype(jnp.float32)  # (bq4, bk4)
 # ```
 # </details>
 #
@@ -705,14 +706,14 @@ else:
 #
 #     @pl.when(kv == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq4, d4), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq4, H4), dtype=jnp.float32)
 #         m_ref[...] = jnp.full((bq4,), -jnp.inf, dtype=jnp.float32)
 #         l_ref[...] = jnp.zeros((bq4,), dtype=jnp.float32)
 #
 #     q = q_ref[...]
 #     k = k_ref[...]
 #     v = v_ref[...]
-#     s = q @ k.T / jnp.sqrt(d4).astype(jnp.float32)
+#     s = q @ k.T / jnp.sqrt(H4).astype(jnp.float32)
 #
 #     m_tile = jnp.max(s, axis=-1)
 #     m_new = jnp.maximum(m_ref[...], m_tile)
@@ -768,7 +769,7 @@ else:
 #            └──────┴──────┴──────┴──────┘
 #
 # We never materialize the full score matrix!
-# Each block s[i,j] = Q_block_i @ K_block_j.T / √d  is (bq × bk)
+# Each block s[i,j] = Q_block_i @ K_block_j.T / √H  is (bq × bk)
 # and lives only in SRAM for the duration of that grid point.
 # ```
 #
@@ -784,32 +785,32 @@ else:
 
 # %%
 T5 = 128
-d5 = 64
+H5 = 64
 bq5 = 32
 bk5 = 32
 tiles_q5 = T5 // bq5
 tiles_kv5 = T5 // bk5
 
-Q5 = jax.random.normal(jax.random.key(40), (T5, d5))
-K5 = jax.random.normal(jax.random.key(41), (T5, d5))
-V5 = jax.random.normal(jax.random.key(42), (T5, d5))
+Q5 = jax.random.normal(jax.random.key(40), (T5, H5))
+K5 = jax.random.normal(jax.random.key(41), (T5, H5))
+V5 = jax.random.normal(jax.random.key(42), (T5, H5))
 
 # --- Reference ---
 def flash_attention_spec(Q, K, V):
-    """Full attention: softmax(Q @ K.T / sqrt(d)) @ V"""
-    d = Q.shape[-1]
-    S = Q @ K.T / jnp.sqrt(d).astype(Q.dtype)
+    """Full attention: softmax(Q @ K.T / sqrt(H)) @ V"""
+    H = Q.shape[-1]
+    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
     P = jax.nn.softmax(S, axis=-1)
     return P @ V
 
 
 # --- Kernel ---
 def flash_attention_kernel(
-    q_ref,      # (bq5, d5)
-    k_ref,      # (bk5, d5)
-    v_ref,      # (bk5, d5)
-    o_ref,      # (bq5, d5) — output
-    acc_ref,    # (bq5, d5) — scratch: accumulator
+    q_ref,      # (bq5, H5)
+    k_ref,      # (bk5, H5)
+    v_ref,      # (bk5, H5)
+    o_ref,      # (bq5, H5) — output
+    acc_ref,    # (bq5, H5) — scratch: accumulator
     m_ref,      # (bq5,)    — scratch: running max
     l_ref,      # (bq5,)    — scratch: running sum_exp
 ):
@@ -832,14 +833,14 @@ def flash_attention_kernel(
 check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
       grid=(tiles_q5, tiles_kv5),
       in_specs=[
-          pl.BlockSpec((bq5, d5), lambda i, kv: (i, 0)),    # Q: route by i
-          pl.BlockSpec((bk5, d5), lambda i, kv: (kv, 0)),   # K: route by kv
-          pl.BlockSpec((bk5, d5), lambda i, kv: (kv, 0)),   # V: route by kv
+          pl.BlockSpec((bq5, H5), lambda i, kv: (i, 0)),    # Q: route by i
+          pl.BlockSpec((bk5, H5), lambda i, kv: (kv, 0)),   # K: route by kv
+          pl.BlockSpec((bk5, H5), lambda i, kv: (kv, 0)),   # V: route by kv
       ],
-      out_specs=pl.BlockSpec((bq5, d5), lambda i, kv: (i, 0)),
-      out_shape=jax.ShapeDtypeStruct((T5, d5), jnp.float32),
+      out_specs=pl.BlockSpec((bq5, H5), lambda i, kv: (i, 0)),
+      out_shape=jax.ShapeDtypeStruct((T5, H5), jnp.float32),
       scratch_shapes=[
-          pltpu.VMEM((bq5, d5), jnp.float32),   # acc
+          pltpu.VMEM((bq5, H5), jnp.float32),   # acc
           pltpu.VMEM((bq5,), jnp.float32),       # m
           pltpu.VMEM((bq5,), jnp.float32),       # l
       ],
@@ -864,14 +865,14 @@ check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
 #
 #     @pl.when(kv == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq5, d5), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq5, H5), dtype=jnp.float32)
 #         m_ref[...] = jnp.full((bq5,), -jnp.inf, dtype=jnp.float32)
 #         l_ref[...] = jnp.zeros((bq5,), dtype=jnp.float32)
 #
 #     q = q_ref[...]
 #     k = k_ref[...]
 #     v = v_ref[...]
-#     s = q @ k.T / jnp.sqrt(d5).astype(jnp.float32)
+#     s = q @ k.T / jnp.sqrt(H5).astype(jnp.float32)
 #
 #     m_tile = jnp.max(s, axis=-1)
 #     m_new = jnp.maximum(m_ref[...], m_tile)
@@ -954,22 +955,22 @@ check(flash_attention_kernel, flash_attention_spec, (Q5, K5, V5),
 
 # %%
 T6 = 128
-d6 = 64
+H6 = 64
 bq6 = 32
 bk6 = 32
 tiles_q6 = T6 // bq6
 tiles_kv6 = T6 // bk6
 
-Q6 = jax.random.normal(jax.random.key(50), (T6, d6))
-K6 = jax.random.normal(jax.random.key(51), (T6, d6))
-V6 = jax.random.normal(jax.random.key(52), (T6, d6))
+Q6 = jax.random.normal(jax.random.key(50), (T6, H6))
+K6 = jax.random.normal(jax.random.key(51), (T6, H6))
+V6 = jax.random.normal(jax.random.key(52), (T6, H6))
 
 # --- Reference ---
 def causal_attention_spec(Q, K, V):
     """Attention with causal mask."""
-    d = Q.shape[-1]
+    H = Q.shape[-1]
     T = Q.shape[0]
-    S = Q @ K.T / jnp.sqrt(d).astype(Q.dtype)
+    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
     mask = jnp.tril(jnp.ones((T, T), dtype=jnp.bool_))
     S = jnp.where(mask, S, -jnp.inf)
     P = jax.nn.softmax(S, axis=-1)
@@ -1005,14 +1006,14 @@ def causal_flash_kernel(
 check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
       grid=(tiles_q6, tiles_kv6),
       in_specs=[
-          pl.BlockSpec((bq6, d6), lambda i, kv: (i, 0)),
-          pl.BlockSpec((bk6, d6), lambda i, kv: (kv, 0)),
-          pl.BlockSpec((bk6, d6), lambda i, kv: (kv, 0)),
+          pl.BlockSpec((bq6, H6), lambda i, kv: (i, 0)),
+          pl.BlockSpec((bk6, H6), lambda i, kv: (kv, 0)),
+          pl.BlockSpec((bk6, H6), lambda i, kv: (kv, 0)),
       ],
-      out_specs=pl.BlockSpec((bq6, d6), lambda i, kv: (i, 0)),
-      out_shape=jax.ShapeDtypeStruct((T6, d6), jnp.float32),
+      out_specs=pl.BlockSpec((bq6, H6), lambda i, kv: (i, 0)),
+      out_shape=jax.ShapeDtypeStruct((T6, H6), jnp.float32),
       scratch_shapes=[
-          pltpu.VMEM((bq6, d6), jnp.float32),
+          pltpu.VMEM((bq6, H6), jnp.float32),
           pltpu.VMEM((bq6,), jnp.float32),
           pltpu.VMEM((bq6,), jnp.float32),
       ],
@@ -1053,7 +1054,7 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 #
 #     @pl.when(kv == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq6, d6), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq6, H6), dtype=jnp.float32)
 #         m_ref[...] = jnp.full((bq6,), -jnp.inf, dtype=jnp.float32)
 #         l_ref[...] = jnp.zeros((bq6,), dtype=jnp.float32)
 #
@@ -1064,7 +1065,7 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 #         q = q_ref[...]
 #         k = k_ref[...]
 #         v = v_ref[...]
-#         s = q @ k.T / jnp.sqrt(d6).astype(jnp.float32)
+#         s = q @ k.T / jnp.sqrt(H6).astype(jnp.float32)
 #
 #         # Apply causal mask for partial blocks
 #         q_idx = i * bq6 + jnp.arange(bq6)[:, None]
@@ -1149,15 +1150,15 @@ check(causal_flash_kernel, causal_attention_spec, (Q6, K6, V6),
 
 # %%
 T7 = 128
-d7 = 64
+H7 = 64
 bq7 = 32
 bk7 = 32
 tiles_q7 = T7 // bq7
 tiles_kv7 = T7 // bk7
 
-Q7 = jax.random.normal(jax.random.key(60), (T7, d7))
-K7 = jax.random.normal(jax.random.key(61), (T7, d7))
-V7 = jax.random.normal(jax.random.key(62), (T7, d7))
+Q7 = jax.random.normal(jax.random.key(60), (T7, H7))
+K7 = jax.random.normal(jax.random.key(61), (T7, H7))
+V7 = jax.random.normal(jax.random.key(62), (T7, H7))
 
 # --- Build causal block_mask ---
 # 0 = SKIP, 1 = PARTIAL (diagonal), 2 = FULL (below diagonal)
@@ -1194,9 +1195,9 @@ print(f"\npartial_masks7 shape: {partial_masks7.shape} ({partial_idx} partial bl
 # --- Reference ---
 def block_sparse_attention_spec(Q, K, V, block_mask, partial_masks):
     """Attention with block-sparse mask (reference implementation)."""
-    d = Q.shape[-1]
+    H = Q.shape[-1]
     T = Q.shape[0]
-    S = Q @ K.T / jnp.sqrt(d).astype(Q.dtype)
+    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
     # Reconstruct full mask from block_mask + partial_masks
     full_mask = jnp.zeros((T, T), dtype=jnp.bool_)
     pidx = 0
@@ -1253,16 +1254,16 @@ actual7 = pl.pallas_call(
     block_sparse_flash_kernel,
     grid=(tiles_q7, tiles_kv7),
     in_specs=[
-        pl.BlockSpec((bq7, d7), lambda i, kv: (i, 0)),              # Q
-        pl.BlockSpec((bk7, d7), lambda i, kv: (kv, 0)),             # K
-        pl.BlockSpec((bk7, d7), lambda i, kv: (kv, 0)),             # V
+        pl.BlockSpec((bq7, H7), lambda i, kv: (i, 0)),              # Q
+        pl.BlockSpec((bk7, H7), lambda i, kv: (kv, 0)),             # K
+        pl.BlockSpec((bk7, H7), lambda i, kv: (kv, 0)),             # V
         pl.BlockSpec((tiles_kv7,), lambda i, kv: (i,)),             # block_mask row
         pl.BlockSpec(memory_space=pl.ANY),                           # partial_masks (full)
     ],
-    out_specs=pl.BlockSpec((bq7, d7), lambda i, kv: (i, 0)),
-    out_shape=jax.ShapeDtypeStruct((T7, d7), jnp.float32),
+    out_specs=pl.BlockSpec((bq7, H7), lambda i, kv: (i, 0)),
+    out_shape=jax.ShapeDtypeStruct((T7, H7), jnp.float32),
     scratch_shapes=[
-        pltpu.VMEM((bq7, d7), jnp.float32),
+        pltpu.VMEM((bq7, H7), jnp.float32),
         pltpu.VMEM((bq7,), jnp.float32),
         pltpu.VMEM((bq7,), jnp.float32),
     ],
@@ -1311,7 +1312,7 @@ else:
 #
 #     @pl.when(kv == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq7, d7), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq7, H7), dtype=jnp.float32)
 #         m_ref[...] = jnp.full((bq7,), -jnp.inf, dtype=jnp.float32)
 #         l_ref[...] = jnp.zeros((bq7,), dtype=jnp.float32)
 #
@@ -1323,7 +1324,7 @@ else:
 #         q = q_ref[...]
 #         k = k_ref[...]
 #         v = v_ref[...]
-#         s = q @ k.T / jnp.sqrt(d7).astype(jnp.float32)
+#         s = q @ k.T / jnp.sqrt(H7).astype(jnp.float32)
 #
 #         # Apply partial mask for diagonal blocks.
 #         # For causal: block i has partial mask i (one per Q row).
@@ -1405,15 +1406,15 @@ else:
 
 # %%
 T8 = 128
-d8 = 64
+H8 = 64
 bq8 = 32
 bk8 = 32
 tiles_q8 = T8 // bq8
 tiles_kv8 = T8 // bk8
 
-Q8 = jax.random.normal(jax.random.key(70), (T8, d8))
-K8 = jax.random.normal(jax.random.key(71), (T8, d8))
-V8 = jax.random.normal(jax.random.key(72), (T8, d8))
+Q8 = jax.random.normal(jax.random.key(70), (T8, H8))
+K8 = jax.random.normal(jax.random.key(71), (T8, H8))
+V8 = jax.random.normal(jax.random.key(72), (T8, H8))
 
 # --- Build causal block_mask (same as Puzzle 7) ---
 block_mask8 = jnp.zeros((tiles_q8, tiles_kv8), dtype=jnp.int32)
@@ -1467,9 +1468,9 @@ for qi in range(tiles_q8):
 # --- Reference ---
 def splash_attention_spec(Q, K, V, data_next, mask_next, partial_masks):
     """Same as causal attention — splash is an optimization, not a different computation."""
-    d = Q.shape[-1]
+    H = Q.shape[-1]
     T = Q.shape[0]
-    S = Q @ K.T / jnp.sqrt(d).astype(Q.dtype)
+    S = Q @ K.T / jnp.sqrt(H).astype(Q.dtype)
     mask = jnp.tril(jnp.ones((T, T), dtype=jnp.bool_))
     S = jnp.where(mask, S, -jnp.inf)
     P = jax.nn.softmax(S, axis=-1)
@@ -1495,12 +1496,12 @@ def o_index_map(i, step, data_next_ref, mask_next_ref):
 def splash_attention_kernel(
     data_next_ref,       # (tiles_q8, grid_width8) — scalar prefetch
     mask_next_ref,       # (tiles_q8, grid_width8) — scalar prefetch
-    q_ref,               # (bq8, d8) — Q block
-    k_ref,               # (bk8, d8) — KV block (routed by data_next)
-    v_ref,               # (bk8, d8) — KV block (routed by data_next)
+    q_ref,               # (bq8, H8) — Q block
+    k_ref,               # (bk8, H8) — KV block (routed by data_next)
+    v_ref,               # (bk8, H8) — KV block (routed by data_next)
     partial_masks_ref,   # (num_partial8, bq8, bk8) — all partial masks
-    o_ref,               # (bq8, d8) — output
-    acc_ref,             # (bq8, d8) — scratch
+    o_ref,               # (bq8, H8) — output
+    acc_ref,             # (bq8, H8) — scratch
     m_ref,               # (bq8,) — scratch
     l_ref,               # (bq8,) — scratch
 ):
@@ -1532,14 +1533,14 @@ actual8 = pl.pallas_call(
     grid_spec=pltpu.PrefetchScalarGridSpec(
         num_scalar_prefetch=2,   # data_next and mask_next
         in_specs=[
-            pl.BlockSpec((bq8, d8), q_index_map),              # Q
-            pl.BlockSpec((bk8, d8), kv_index_map),             # K (routed!)
-            pl.BlockSpec((bk8, d8), kv_index_map),             # V (routed!)
+            pl.BlockSpec((bq8, H8), q_index_map),              # Q
+            pl.BlockSpec((bk8, H8), kv_index_map),             # K (routed!)
+            pl.BlockSpec((bk8, H8), kv_index_map),             # V (routed!)
             pl.BlockSpec(memory_space=pl.ANY),                  # partial_masks (full)
         ],
-        out_specs=pl.BlockSpec((bq8, d8), o_index_map),
+        out_specs=pl.BlockSpec((bq8, H8), o_index_map),
         scratch_shapes=[
-            pltpu.VMEM((bq8, d8), jnp.float32),   # acc
+            pltpu.VMEM((bq8, H8), jnp.float32),   # acc
             pltpu.VMEM((bq8,), jnp.float32),       # m
             pltpu.VMEM((bq8,), jnp.float32),       # l
         ],
@@ -1588,7 +1589,7 @@ else:
 #
 #     @pl.when(step == 0)
 #     def _init():
-#         acc_ref[...] = jnp.zeros((bq8, d8), dtype=jnp.float32)
+#         acc_ref[...] = jnp.zeros((bq8, H8), dtype=jnp.float32)
 #         m_ref[...] = jnp.full((bq8,), -jnp.inf, dtype=jnp.float32)
 #         l_ref[...] = jnp.zeros((bq8,), dtype=jnp.float32)
 #
@@ -1600,7 +1601,7 @@ else:
 #         q = q_ref[...]
 #         k = k_ref[...]
 #         v = v_ref[...]
-#         s = q @ k.T / jnp.sqrt(d8).astype(jnp.float32)
+#         s = q @ k.T / jnp.sqrt(H8).astype(jnp.float32)
 #
 #         # For causal: Q block i → partial mask i (one per row)
 #         is_partial = (block_type == 1)
