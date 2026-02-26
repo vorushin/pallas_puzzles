@@ -28,7 +28,7 @@
     <mxCell id="7" value="HBM" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
       <mxGeometry x="197" y="0" width="42" height="28" as="geometry"/>
     </mxCell>
-    <mxCell id="8" value="find global max m" style="text;fontSize=10;fontColor=#666666;align=left;" vertex="1" parent="1">
+    <mxCell id="8" value="find global max &lt;i&gt;m&lt;/i&gt;" style="text;fontSize=10;fontColor=#666666;align=left;html=1;" vertex="1" parent="1">
       <mxGeometry x="250" y="3" width="140" height="24" as="geometry"/>
     </mxCell>
 
@@ -57,7 +57,7 @@
     <mxCell id="15" value="HBM" style="rounded=1;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
       <mxGeometry x="197" y="37" width="42" height="28" as="geometry"/>
     </mxCell>
-    <mxCell id="16" value="compute sum of exp" style="text;fontSize=10;fontColor=#666666;align=left;" vertex="1" parent="1">
+    <mxCell id="16" value="compute &amp;sum;exp" style="text;fontSize=10;fontColor=#666666;align=left;html=1;" vertex="1" parent="1">
       <mxGeometry x="250" y="40" width="140" height="24" as="geometry"/>
     </mxCell>
 
