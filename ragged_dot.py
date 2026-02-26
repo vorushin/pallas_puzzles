@@ -178,15 +178,7 @@ else:
 #
 # Given `group_sizes = [300, 212, 512]` with `bm = 128`:
 #
-# ```
-# Row:  0              300    512         1024
-#       ├── group 0 ───┤├─ g1 ─┤├── group 2 ──┤
-#
-# Tiles (bm=128):
-#       [  0  ][ 128 ][ 256 ][ 384 ][ 512 ][ 640 ][ 768 ][ 896 ]
-#       ├─g0──┤├─g0──┤├g0/g1┤├─g1──┤├─g2──┤├─g2──┤├─g2──┤├─g2──┤
-#                      ^ partial tile: visited by BOTH g0 and g1
-# ```
+# ![Groups and tiles](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/ragged-dot-puzzle2.drawio.svg)
 #
 # Tile at row 256 straddles the group boundary. It gets visited **twice**:
 # once for group 0 (rows 256-299 are valid) and once for group 1 (rows

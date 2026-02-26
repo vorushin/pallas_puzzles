@@ -1,0 +1,102 @@
+<mxGraphModel>
+  <root>
+    <mxCell id="0"/>
+    <mxCell id="1" parent="0"/>
+
+    <!-- Row position tick labels -->
+    <mxCell id="2" value="0" style="text;fontSize=9;fontColor=#666666;align=center;" vertex="1" parent="1">
+      <mxGeometry x="-8" y="0" width="20" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="3" value="300" style="text;fontSize=9;fontColor=#666666;align=center;" vertex="1" parent="1">
+      <mxGeometry x="119" y="0" width="24" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="4" value="512" style="text;fontSize=9;fontColor=#666666;align=center;" vertex="1" parent="1">
+      <mxGeometry x="208" y="0" width="24" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="5" value="1024" style="text;fontSize=9;fontColor=#666666;align=center;" vertex="1" parent="1">
+      <mxGeometry x="426" y="0" width="28" height="14" as="geometry"/>
+    </mxCell>
+
+    <!-- Group bars -->
+    <mxCell id="10" value="group 0" style="rounded=0;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="0" y="16" width="129" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="11" value="group 1" style="rounded=0;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="129" y="16" width="91" height="26" as="geometry"/>
+    </mxCell>
+    <mxCell id="12" value="group 2" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="220" y="16" width="220" height="26" as="geometry"/>
+    </mxCell>
+
+    <!-- Section label -->
+    <mxCell id="15" value="Tiles (b&lt;sub&gt;m&lt;/sub&gt;=128):" style="text;fontSize=10;fontColor=#333333;fontStyle=1;align=left;html=1;" vertex="1" parent="1">
+      <mxGeometry x="0" y="48" width="100" height="16" as="geometry"/>
+    </mxCell>
+
+    <!-- Tile boxes (8 tiles, 55px each) -->
+    <!-- Tile 0: group 0 -->
+    <mxCell id="20" value="0" style="rounded=0;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="0" y="66" width="55" height="26" as="geometry"/>
+    </mxCell>
+    <!-- Tile 1: group 0 -->
+    <mxCell id="21" value="1" style="rounded=0;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="55" y="66" width="55" height="26" as="geometry"/>
+    </mxCell>
+    <!-- Tile 2: STRADDLED (g0/g1) -->
+    <mxCell id="22" value="2" style="rounded=0;whiteSpace=wrap;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;fontStyle=1;strokeWidth=2;" vertex="1" parent="1">
+      <mxGeometry x="110" y="66" width="55" height="26" as="geometry"/>
+    </mxCell>
+    <!-- Tile 3: group 1 -->
+    <mxCell id="23" value="3" style="rounded=0;whiteSpace=wrap;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="165" y="66" width="55" height="26" as="geometry"/>
+    </mxCell>
+    <!-- Tile 4: group 2 -->
+    <mxCell id="24" value="4" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="220" y="66" width="55" height="26" as="geometry"/>
+    </mxCell>
+    <!-- Tile 5: group 2 -->
+    <mxCell id="25" value="5" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="275" y="66" width="55" height="26" as="geometry"/>
+    </mxCell>
+    <!-- Tile 6: group 2 -->
+    <mxCell id="26" value="6" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="330" y="66" width="55" height="26" as="geometry"/>
+    </mxCell>
+    <!-- Tile 7: group 2 -->
+    <mxCell id="27" value="7" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="385" y="66" width="55" height="26" as="geometry"/>
+    </mxCell>
+
+    <!-- Group ownership labels below tiles -->
+    <mxCell id="30" value="g0" style="text;fontSize=9;fontColor=#82b366;fontStyle=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="0" y="94" width="55" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="31" value="g0" style="text;fontSize=9;fontColor=#82b366;fontStyle=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="55" y="94" width="55" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="32" value="g0 / g1" style="text;fontSize=9;fontColor=#b85450;fontStyle=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="110" y="94" width="55" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="33" value="g1" style="text;fontSize=9;fontColor=#d6b656;fontStyle=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="165" y="94" width="55" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="34" value="g2" style="text;fontSize=9;fontColor=#6c8ebf;fontStyle=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="220" y="94" width="55" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="35" value="g2" style="text;fontSize=9;fontColor=#6c8ebf;fontStyle=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="275" y="94" width="55" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="36" value="g2" style="text;fontSize=9;fontColor=#6c8ebf;fontStyle=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="330" y="94" width="55" height="14" as="geometry"/>
+    </mxCell>
+    <mxCell id="37" value="g2" style="text;fontSize=9;fontColor=#6c8ebf;fontStyle=1;align=center;" vertex="1" parent="1">
+      <mxGeometry x="385" y="94" width="55" height="14" as="geometry"/>
+    </mxCell>
+
+    <!-- Straddled tile annotation -->
+    <mxCell id="40" value="↑ straddles boundary: visited by BOTH g0 and g1" style="text;fontSize=9;fontColor=#b85450;fontStyle=2;align=left;" vertex="1" parent="1">
+      <mxGeometry x="110" y="110" width="260" height="14" as="geometry"/>
+    </mxCell>
+
+  </root>
+</mxGraphModel>
