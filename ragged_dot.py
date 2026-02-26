@@ -160,7 +160,7 @@ def permuted_matmul_kernel(perm_ref, lhs_ref, rhs_ref, o_ref):
     # lhs_ref: (M1, K1) — current group's lhs
     # rhs_ref: (K1, N1) — permuted group's rhs (loaded via index map)
     # o_ref: (M1, N1) — output tile
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # --- Index maps ---
@@ -326,7 +326,7 @@ def compute_group_offsets(group_sizes):
     Returns:
         (G+1,) int32
     """
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # %%
@@ -363,7 +363,7 @@ def compute_group_tiles(group_sizes, group_offsets, bm):
     Returns:
         (G,) int32
     """
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Extract group starts and ends from offsets
     # 2. Round starts DOWN and ends UP to tile boundaries
     # 3. Handle zero-size groups
@@ -420,7 +420,7 @@ def compute_group_ids(group_tiles, num_groups, max_len):
     Returns:
         (max_len,) int32
     """
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # %%
@@ -466,7 +466,7 @@ def compute_tile_visits(group_sizes, group_offsets, tiles_m, bm):
     Returns:
         (tiles_m,) int32
     """
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Find group start positions (from offsets, skip the leading 0)
     # 2. Identify which starts are non-aligned (start % bm != 0)
     #    AND belong to non-empty groups
@@ -530,7 +530,7 @@ def compute_m_tile_ids(tile_visits, tiles_m, max_len):
     Returns:
         (max_len,) int32
     """
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # %%
@@ -808,7 +808,7 @@ def masked_copy_kernel(group_offsets_ref, group_ids_ref, m_tile_ids_ref,
     # x_ref: (bm4, N4) — tile of input
     # o_ref: (bm4, N4) — tile of output
     grid_id = pl.program_id(0)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Look up which group and tile this grid iteration processes
     # 2. Get the group's row boundaries
     # 3. Build a 2D boolean mask for rows inside this group
@@ -921,7 +921,7 @@ def softmax_spec(x):
 def softmax_kernel(x_ref, o_ref):
     # x_ref: (bm5, COLS5) — one row block (full width)
     # o_ref: (bm5, COLS5) — output
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Compute row max for numerical stability
     # 2. Subtract max, exponentiate
     # 3. Divide by row sum
@@ -1125,7 +1125,7 @@ def simple_gmm_kernel(group_metadata_ref, group_offset_ref,
     grid_id = pl.program_id(1)
     k_i = pl.program_id(2)
 
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Zero accumulator on first K tile
     # 2. Accumulate tile matmul
     # 3. Store result on last K tile
@@ -1250,7 +1250,7 @@ def ragged_dot_kernel(group_metadata_ref, group_offset_ref,
     grid_id = pl.program_id(1)
     k_i = pl.program_id(2)
 
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # Same as Puzzle 6, but on the last K tile, apply a masked store
     # so only rows belonging to the current group are written.
 
@@ -1413,7 +1413,7 @@ def tgmm_kernel(group_metadata_ref, group_offset_ref,
     group_offsets, group_ids, m_tile_ids = group_metadata_ref
     grid_id = pl.program_id(2)  # tgmm grid: (tiles_n, tiles_k, num_tiles)
 
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Detect group transitions: when does a new group start? end?
     # 2. Zero accumulator at the start of each group
     # 3. Accumulate masked lhs.T @ rhs

@@ -146,7 +146,7 @@ def add10_spec(x):
 def add10_kernel(x_ref, o_ref):
     # x_ref: Ref to input block (shape (N1,))
     # o_ref: Ref to output block (shape (N1,))
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # %%
@@ -229,7 +229,7 @@ def vadd_spec(x, y):
 # --- Kernel skeleton ---
 def vadd_kernel(x_ref, y_ref, o_ref):
     # Each invocation sees a (bm2,) slice thanks to BlockSpec
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # %%
@@ -367,7 +367,7 @@ def mul2d_spec(x):
 
 # --- Kernel skeleton ---
 def mul2d_kernel(x_ref, o_ref):
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # %%
@@ -436,7 +436,7 @@ def outer_kernel(a_ref, b_ref, o_ref):
     # a_ref: (bm5,) — a slice of vector a
     # b_ref: (bn5,) — a slice of vector b
     # o_ref: (bm5, bn5) — output tile
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # %%
@@ -597,7 +597,7 @@ def rowsum_kernel(x_ref, o_ref):
     # o_ref: (bm7,) — accumulator for this row block
     # Grid: (ROWS7 // bm7, COLS7 // bk7) — iterates (row_block, k_block)
     k_i = pl.program_id(1)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. On first k tile (k_i == 0), initialize the output
     # 2. Add this tile's contribution to the running sum
 
@@ -731,7 +731,7 @@ def matmul_kernel(a_ref, b_ref, o_ref, acc_ref):
     # o_ref: (bm8, bn8) — output tile
     # acc_ref: (bm8, bn8) — scratch accumulator (VMEM on TPU)
     k_i = pl.program_id(2)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Zero acc_ref when k_i == 0
     # 2. Accumulate: acc_ref[...] += a_ref[...] @ b_ref[...]
     # 3. Store acc_ref → o_ref when k_i == tiles_k8 - 1
@@ -931,7 +931,7 @@ def batched_matmul_kernel(lhs_ref, rhs_ref, o_ref):
     # lhs_ref: (M10, K10) — one group's lhs (batch dim squeezed)
     # rhs_ref: (K10, N10) — one group's rhs (batch dim squeezed)
     # o_ref: (M10, N10) — one group's output (batch dim squeezed)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # %%
@@ -1002,7 +1002,7 @@ def fused_relu_spec(a, b):
 # --- Kernel skeleton ---
 def fused_relu_kernel(a_ref, b_ref, o_ref, acc_ref):
     k_i = pl.program_id(2)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # Same zero/accumulate/store as Puzzle 8, but apply ReLU before storing
 
 

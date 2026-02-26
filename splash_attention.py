@@ -176,7 +176,7 @@ def my_attention(Q, K, V):
       2. Apply softmax along the last axis (over keys)        → (T, T)
       3. Multiply the attention weights P by V via einsum     → (T, H)
     """
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
 
 
 # %%
@@ -252,8 +252,9 @@ else:
 # separate kernels**:
 #
 # **Kernel 1 — `tiled_max_kernel`**: Tile over x to find the global max.
-# Uses the zero/accumulate pattern from basics.py Puzzle 7:
-# `@pl.when(k == 0)` initializes, then every tile updates the running max.
+# Uses the init/accumulate pattern from basics.py Puzzle 7:
+# `@pl.when(k == 0)` initializes to `-inf`, then every tile updates the
+# running max uniformly.
 #
 # **Kernel 2 — `tiled_sumexp_kernel`**: Tile over x again, now that we
 # know `m`, to compute `l = sum(exp(x - m))`. This kernel receives `m`
@@ -284,9 +285,9 @@ def tiled_max_kernel(x_ref, m_ref):
     Grid: (tiles_k2,) — iterates over tiles of x
     """
     k = pl.program_id(0)
-    pass  # YOUR CODE HERE
-    # 1. On first tile (k == 0): set m = max(tile)
-    # 2. On later tiles: m = max(m, max(tile))
+    # YOUR CODE HERE
+    # 1. On first tile (k == 0): initialize m to -infinity
+    # 2. On ALL tiles: m = max(m, max(tile))
 
 
 # --- Kernel 2: compute sum of exponentials (needs global max m) ---
@@ -300,13 +301,13 @@ def tiled_sumexp_kernel(x_ref, m_ref, l_ref):
     Grid: (tiles_k2,) — iterates over tiles of x
     """
     k = pl.program_id(0)
-    pass  # YOUR CODE HERE
-    # 1. On first tile (k == 0): set l = sum(exp(tile - m))
-    # 2. On later tiles: l += sum(exp(tile - m))
+    # YOUR CODE HERE
+    # 1. On first tile (k == 0): initialize l to 0
+    # 2. On ALL tiles: l += sum(exp(tile - m))
 
 
 # %%
-x2 = jax.random.normal(jax.random.key(10), (N2,))
+x2 = jax.random.uniform(jax.random.key(10), (N2,), minval=-5.0, maxval=-1.0)
 
 # Pass 1: find global max
 m2 = pl.pallas_call(
@@ -334,40 +335,43 @@ l2 = pl.pallas_call(
 # Pass 3: normalize (just JAX, no kernel needed)
 softmax2 = jnp.exp(x2 - m2) / l2
 
+expected_m2 = jnp.max(x2)
+expected_l2 = jnp.sum(jnp.exp(x2 - expected_m2))
 expected2 = softmax_spec(x2)
-if jnp.allclose(softmax2, expected2, atol=1e-3):
+m_ok = jnp.allclose(m2, expected_m2, atol=1e-3)
+l_ok = jnp.allclose(l2, expected_l2, atol=1e-3)
+s_ok = jnp.allclose(softmax2, expected2, atol=1e-3)
+if m_ok and l_ok and s_ok:
     print(f"PASSED ✓  (m={float(m2):.3f}, l={float(l2):.3f})")
 else:
-    print(f"FAILED ✗  max error: {float(jnp.max(jnp.abs(softmax2 - expected2))):.6f}")
-    print(f"  m={float(m2):.3f} (expected {float(jnp.max(x2)):.3f})")
-    print(f"  l={float(l2):.3f} (expected {float(jnp.sum(jnp.exp(x2 - jnp.max(x2)))):.3f})")
+    if not m_ok:
+        print(f"FAILED ✗  m={float(m2):.3f} (expected {float(expected_m2):.3f})")
+    if not l_ok:
+        print(f"FAILED ✗  l={float(l2):.3f} (expected {float(expected_l2):.3f})")
+    if not s_ok:
+        print(f"FAILED ✗  softmax max error: {float(jnp.max(jnp.abs(softmax2 - expected2))):.6f}")
 
 # %% [markdown]
 # <details><summary>Hint 1 of 3 — tiled_max_kernel</summary>
 #
-# This is a standard tiled reduction — same pattern as basics.py Puzzle 7:
+# Initialize to the identity element for max (`-inf`), then the same update
+# runs on every tile — same pattern as basics.py Puzzle 7:
 # ```python
 # @pl.when(k == 0)
 # def _():
-#     m_ref[...] = jnp.max(x_ref[...])
-#
-# @pl.when(k > 0)
-# def _():
-#     m_ref[...] = jnp.maximum(m_ref[...], jnp.max(x_ref[...]))
+#     m_ref[...] = jnp.float32(-jnp.inf)
+# m_ref[...] = jnp.maximum(m_ref[...], jnp.max(x_ref[...]))
 # ```
 # </details>
 #
 # <details><summary>Hint 2 of 3 — tiled_sumexp_kernel</summary>
 #
-# Since we already know the global max `m`, this is a simple accumulation:
+# Initialize to 0, then accumulate uniformly:
 # ```python
 # @pl.when(k == 0)
 # def _():
-#     l_ref[...] = jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
-#
-# @pl.when(k > 0)
-# def _():
-#     l_ref[...] = l_ref[...] + jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
+#     l_ref[...] = jnp.float32(0.0)
+# l_ref[...] += jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
 # ```
 # </details>
 #
@@ -376,26 +380,18 @@ else:
 # ```python
 # def tiled_max_kernel(x_ref, m_ref):
 #     k = pl.program_id(0)
-#
 #     @pl.when(k == 0)
 #     def _():
-#         m_ref[...] = jnp.max(x_ref[...])
-#
-#     @pl.when(k > 0)
-#     def _():
-#         m_ref[...] = jnp.maximum(m_ref[...], jnp.max(x_ref[...]))
+#         m_ref[...] = jnp.float32(-jnp.inf)
+#     m_ref[...] = jnp.maximum(m_ref[...], jnp.max(x_ref[...]))
 #
 #
 # def tiled_sumexp_kernel(x_ref, m_ref, l_ref):
 #     k = pl.program_id(0)
-#
 #     @pl.when(k == 0)
 #     def _():
-#         l_ref[...] = jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
-#
-#     @pl.when(k > 0)
-#     def _():
-#         l_ref[...] = l_ref[...] + jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
+#         l_ref[...] = jnp.float32(0.0)
+#     l_ref[...] += jnp.sum(jnp.exp(x_ref[...] - m_ref[...]))
 # ```
 # </details>
 
@@ -487,7 +483,7 @@ def online_softmax_kernel(x_ref, m_ref, l_ref):
     - Same correction logic handles both first and subsequent tiles
     """
     k = pl.program_id(0)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. On first tile: initialize m_ref = -inf, l_ref = 0
     # 2. On ALL tiles (including first): read tile, compute new max,
     #    apply correction to l, add new exponentials
@@ -654,7 +650,7 @@ def tiled_attention_one_block_kernel(
     Grid: (tiles_kv4,) — iterates over KV blocks
     """
     kv = pl.program_id(0)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. On first KV block: init acc=0, m=-inf, l=0
     # 2. Scores: s = einsum('qh,kh->qk', q, k) / sqrt(H4)  → (bq4, bk4)
     # 3. Compute row-wise max of scores: m_tile        → (bq4,)
@@ -854,7 +850,7 @@ def flash_attention_kernel(
     """
     i = pl.program_id(0)
     kv = pl.program_id(1)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # Same pattern as Puzzle 4, but now:
     # - Use kv (not i) for the KV iteration
     # - Init on kv == 0, normalize on kv == tiles_kv5 - 1
@@ -1026,7 +1022,7 @@ def causal_flash_kernel(
     """
     i = pl.program_id(0)
     kv = pl.program_id(1)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Init on kv == 0 (same as Puzzle 5)
     # 2. Determine if this block should be skipped: i * bq6 < kv * bk6
     # 3. @pl.when(should_compute): compute scores, apply causal mask,
@@ -1266,7 +1262,7 @@ def block_sparse_flash_kernel(
     """
     i = pl.program_id(0)
     kv = pl.program_id(1)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Init on kv == 0
     # 2. Read block_mask_ref[kv] to get block type
     # 3. @pl.when(block_type > 0): compute attention
@@ -1548,7 +1544,7 @@ def splash_attention_kernel(
     """
     i = pl.program_id(0)
     step = pl.program_id(1)
-    pass  # YOUR CODE HERE
+    # YOUR CODE HERE
     # 1. Init on step == 0
     # 2. Read block type from mask_next_ref[i, step]
     # 3. @pl.when(block_type > 0): flash attention with optional mask
