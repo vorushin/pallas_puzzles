@@ -1367,7 +1367,14 @@ else:
 # over the **non-skip** blocks. A precomputed `data_next` array tells
 # each grid iteration which KV block to process.
 #
-# ![Regular vs compacted grid](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle8.drawio.jpg)
+# **JPG:**
+# ![Regular vs compacted grid (JPG)](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle8.drawio.jpg)
+#
+# **PNG:**
+# ![Regular vs compacted grid (PNG)](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle8.drawio.png)
+#
+# **SVG:**
+# ![Regular vs compacted grid (SVG)](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/splash-attention-puzzle8.drawio.svg)
 #
 # **How it works**: We precompute:
 # - `data_next[i, step]`: which KV block index to load at step `step`
