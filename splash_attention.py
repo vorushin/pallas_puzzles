@@ -40,15 +40,13 @@
 # %% [markdown]
 # ## Setup
 #
-# Collapse this section (▶ arrow next to the heading), then **Run all cells
+# Collapse this section (› arrow next to the heading), then ▶ **Run all cells
 # in section** from the menu to get everything ready in one click.
 
 # %%
-#@title Install dependencies
 # !pip install -q jax
 
 # %%
-#@title Imports
 import jax
 import jax.numpy as jnp
 from jax.experimental import pallas as pl
@@ -57,7 +55,6 @@ print(f"JAX {jax.__version__}")
 
 
 # %%
-#@title check() helper
 def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
           out_shape=None, scratch_shapes=(), atol=1e-3, rtol=1e-3, **kwargs):
     """Run a Pallas kernel in interpret mode and compare against a reference spec.
@@ -108,7 +105,6 @@ def check(kernel_fn, spec_fn, inputs, *, grid=(), in_specs=None, out_specs=None,
 
 
 # %%
-#@title attention_spec() — reference implementation (used by test cells)
 def attention_spec(Q, K, V):
     """Standard dot-product attention: softmax(QK^T / sqrt(H)) @ V"""
     H = Q.shape[-1]
