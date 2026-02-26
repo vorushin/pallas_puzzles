@@ -895,6 +895,22 @@ check(matmul_kernel_solved, matmul_spec9, (a9, b9),
 # The grid adds a **batch dimension**: `grid = (G,)`.
 # Each iteration's BlockSpec selects one batch element at a time.
 #
+# ```
+#  lhs (G,M,K)          rhs (G,K,N)          out (G,M,N)
+#  ┌───────────┐        ┌──────────┐         ┌──────────┐
+#  │ g=0  M×K  │──┐     │ g=0 K×N  │──┐      │ g=0 M×N  │
+#  ├───────────┤  │     ├──────────┤  │      ├──────────┤
+#  │ g=1  M×K  │  │     │ g=1 K×N  │  │      │ g=1 M×N  │
+#  ├───────────┤  │     ├──────────┤  │      ├──────────┤
+#  │ g=2  M×K  │  │     │ g=2 K×N  │  │      │ g=2 M×N  │
+#  ├───────────┤  │     ├──────────┤  │      ├──────────┤
+#  │ g=3  M×K  │  │     │ g=3 K×N  │  │      │ g=3 M×N  │
+#  └───────────┘  │     └──────────┘  │      └──────────┘
+#                 │                   │
+#  Grid iter g=0: └──→ lhs_ref(M,K) @ rhs_ref(K,N) ──→ o_ref(M,N)
+#                      ▲ batch dim squeezed by None
+# ```
+#
 # **`None` vs integer in block_shape**: Using `None` means "load the entire
 # axis and **squeeze** that dimension". The ref will NOT have that dim.
 # Using an integer (e.g. `1`) means "load 1 element" — the ref keeps that
