@@ -1,104 +1,84 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Project overview
 
-pallas_puzzles is a standalone collection of progressive Pallas kernel puzzles.
-Each `.py` file is a jupytext percent-format notebook that generates a `.ipynb`
-for use in Google Colab. All puzzles run on CPU via `interpret=True` — no TPU needed.
+Progressive puzzle notebooks for learning Pallas (JAX's kernel language).
+Each `.py` file is a jupytext percent-format notebook → `.ipynb` for Google Colab.
+All puzzles run on CPU via `interpret=True` — no TPU needed.
 
-## Local development
+## Files
 
-Use `uv` for Python package management. Run scripts with `uv run`.
+| File | Focus |
+|------|-------|
+| `basics.py` | Pallas foundations: Refs, grids, BlockSpec, tiled matmul, fusion |
+| `ragged_dot.py` | Scalar prefetch, group metadata, grouped matmul for MoE |
 
-## File map
+Use `uv` for package management. Edit `.py` files (source of truth), then
+`bash update_notebooks.sh` to regenerate `.ipynb`. Commit both.
 
-| File | Puzzles | Focus |
-|------|---------|-------|
-| `basics.py` | 1-11 | Pallas foundations: Refs, grids, BlockSpec, tiled matmul, fusion |
-| `ragged_dot.py` | 1-9 | Scalar prefetch, group metadata, masked stores, grouped matmul |
+## Creating new puzzles
 
-Future: `splash_attention.py` — requires `basics.py` as prerequisite.
+### 1. Understand the user
 
-## Editing workflow
+Before writing anything, ask:
 
-1. Edit the `.py` file (source of truth) — jupytext percent format
-2. Run `bash update_notebooks.sh` to regenerate `.ipynb` via jupytext
-3. Commit both `.py` and `.ipynb`
+- **What's your background?** How much do you know about the topic area
+  (e.g., JAX, linear algebra, TPU architecture, attention mechanisms)?
+  This determines the starting difficulty and how much theory to include.
+- **What are your goals?** What do you want to learn or be able to build
+  after completing these puzzles? (e.g., "understand how splash attention
+  works", "write my own Pallas kernels for production"). This shapes which
+  concepts to cover and what the final puzzle should build toward.
 
-## How to create and update puzzles
+### 2. Research
 
-Each puzzle file uses jupytext percent format:
-- `# %%` marks a code cell
-- `# %% [markdown]` marks a markdown cell
-- All markdown lines are prefixed with `#` (they're Python comments)
+- Search for the best documentation and source code on the topic. Read the
+  official JAX/Pallas docs, relevant papers, and production implementations.
+- If good references are scarce, ask the user to point you to an example
+  implementation or paper they want to learn from.
+- Look for existing puzzles, etudes, or tutorials on similar topics for
+  inspiration (e.g., Sasha Rush's GPU/Tensor puzzles, Triton tutorials,
+  educational notebooks). See what worked well in those and adapt the ideas.
 
-### Puzzle structure
+### 3. Design the puzzle sequence
 
-Every puzzle should have these components in order:
+Tailor puzzles to the specific user based on their background and goals:
 
-1. **Heading**: `## Puzzle N: Title` — clear, descriptive title
-2. **Goal**: One sentence stating exactly what to implement
-3. **Theory section** (`### Theory`): Explain the concept being taught
-   - Build intuition, don't just state facts
-   - Use ASCII diagrams for spatial/tiling concepts
-   - Show the "before and after" — what changes from the previous puzzle
-   - Introduce exactly one new concept per puzzle
-4. **Parameters**: Size constants with puzzle-number suffix (e.g., `M8`, `K8`, `bm8`)
-5. **Reference spec**: Pure JAX function that computes the expected result
-6. **Kernel skeleton**: Function with `pass  # YOUR CODE HERE` placeholder
-   - Add inline comments explaining new concepts
-   - Include type/shape comments for Ref parameters
-7. **Test cell**: Uses `check()` or inline `pallas_call` + comparison
-8. **Progressive hints**: 2-3 `<details>` blocks, ordered:
-   - Hint 1: High-level approach (what to do, not how)
-   - Hint 2: Pattern skeleton (code structure with blanks)
-   - Hint 3: Full solution (complete working code)
+- Start where the user is, not where you think beginners should be.
+  Skip basics they already know. Spend more time on concepts they find hard.
+- Each puzzle should introduce exactly one new concept, building on previous ones.
+- The sequence should tell a story — a clear arc from "here's the first
+  building block" to "now you've built the real thing."
+- The final puzzle (or final few) should connect to the user's stated goal.
 
-### Variable naming
+### 4. Write puzzles that are fun
 
-Use puzzle number as suffix for all size/data variables to avoid collisions:
-`M8, K8, N8, bm8, bk8, bn8, x8, y8` etc.
+Puzzles can be hard, but they should never be frustrating or dry.
 
-### Cross-references
+- Write Theory sections that build intuition, not just state facts.
+  Explain *why* something works this way, not just *what* it is.
+- Use ASCII diagrams for anything spatial (memory layout, tiling, grids).
+- A bit of humor and empathy goes a long way — acknowledge when something
+  is tricky, celebrate when the user is about to have an aha moment.
+- Progressive hints are a safety net: the user should never be truly stuck.
+  Order them from gentle nudge → pattern skeleton → full solution.
+- Inline comments on new APIs and concepts in the code skeleton — don't
+  make users guess what `pltpu.VMEM` or `pl.program_id` means.
 
-When referencing puzzles in another file, prefix with the filename:
-"basics.py Puzzle 8" not just "Puzzle 8".
+### 5. Technical format
 
-## How to create .ipynb notebooks before commit and push
+- Jupytext percent format: `# %%` for code, `# %% [markdown]` for markdown
+- Each puzzle: heading, goal, theory, reference spec, kernel skeleton
+  with `pass  # YOUR CODE HERE`, test cell, hints in `<details>` blocks
+- Use puzzle-number suffixes on variables to avoid collisions (e.g., `M3`, `bm3`)
+- Cross-file references: "basics.py Puzzle 8" not just "Puzzle 8"
 
-```bash
-bash update_notebooks.sh
-```
+## Reviewing puzzles
 
-This runs `uv run jupytext --to ipynb --update` on each puzzle file.
-Always run this before committing — both `.py` and `.ipynb` must be in sync.
+Go through each puzzle as if you're the user solving it. For each one:
 
-## How to review puzzles
-
-Run each puzzle file as a notebook (or read through it sequentially),
-imagining yourself as a user trying to solve the puzzles. For each puzzle,
-check:
-
-1. **Description detail**: Is the Goal clear and specific? Can a reader
-   understand exactly what to implement without reading the hints?
-
-2. **Intuition explanation**: Does the Theory section build genuine
-   understanding? Does it explain *why* this concept matters, not just
-   *what* it is? Are ASCII diagrams used where they help visualize
-   tiling, grids, or memory layout?
-
-3. **Inline comments on new code**: When the kernel skeleton or test cell
-   introduces a new API (`BlockSpec`, `@pl.when`, `PrefetchScalarGridSpec`,
-   etc.), is it annotated with a brief comment explaining what it does?
-
-4. **Progressive hints**: Are hints ordered from general to specific?
-   Does Hint 1 help a stuck user think about the approach without giving
-   away the answer? Does each subsequent hint add useful information?
-   Is the final hint a complete, working solution?
-
-## Dependencies
-
-Colab cells install deps with `!pip install -q jax jaxtyping`.
-For local development: `uv sync`.
+1. **Can I understand what to do?** Is the goal clear without reading hints?
+2. **Do I understand why?** Does the theory build intuition, not just state facts?
+3. **Am I stuck?** If so, does Hint 1 unstick me without giving away the answer?
+4. **Is the code commented?** When new APIs appear, are they explained inline?
+5. **Is it fun?** Or does it feel like homework?
