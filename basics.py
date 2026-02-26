@@ -166,24 +166,49 @@ check(add10_kernel, add10_spec, (x1,))
 #
 # ### Theory
 #
-# When arrays are large, we split them into **blocks** and process each block
-# in a separate kernel invocation. The **grid** defines how many blocks there
-# are, and **BlockSpec** tells Pallas how to slice each array.
+# In Puzzle 1 we used `grid=()` — an empty grid — so the kernel ran once
+# and saw the entire array. That's fine for tiny inputs, but real TPU
+# kernels work on arrays with millions of elements. We need to split
+# them into **blocks** (also called tiles) and process one block per
+# kernel invocation.
+#
+# That's what the **grid** is for. It's a tuple that says "how many times
+# to invoke the kernel, and along which dimensions":
+#
+# ```
+# grid=()      → 1 invocation  (Puzzle 1)
+# grid=(4,)    → 4 invocations, numbered i=0,1,2,3
+# grid=(2, 3)  → 6 invocations, numbered (i,j) for i=0,1 and j=0,1,2
+# ```
+#
+# With `grid=(4,)` and a 256-element vector, we get 4 invocations that
+# each process a 64-element block:
+#
+# ```
+# Array (256 elements):
+# [████████ ████████ ████████ ████████]
+#  block 0   block 1   block 2   block 3
+#  i=0       i=1       i=2       i=3
+# ```
+#
+# But the grid alone only says *how many* invocations — it doesn't say
+# which slice of the array each invocation sees. That's the job of
+# **BlockSpec**, which pairs a block shape with an **index map**:
 #
 # ```python
 # BlockSpec(block_shape, index_map)
 # ```
 #
-# - `block_shape`: shape of the tile each invocation sees
-# - `index_map`: function from grid indices → tile indices
-#
-# For a 1D grid: `BlockSpec((bm,), lambda i: (i,))` means "invocation `i`
-# sees slice `[i*bm : (i+1)*bm]`".
+# The index map is a function from grid indices → block position. For
+# the simplest case, `lambda i: (i,)` means "invocation `i` gets block `i`":
 #
 # ```
-# Array:  [████████ ████████ ████████ ████████]
-#          block 0   block 1   block 2   block 3
-#          grid i=0  grid i=1  grid i=2  grid i=3
+# grid=(4,)  +  BlockSpec((64,), lambda i: (i,))
+#
+# i=0 → index_map(0) = (0,) → array[0:64]
+# i=1 → index_map(1) = (1,) → array[64:128]
+# i=2 → index_map(2) = (2,) → array[128:192]
+# i=3 → index_map(3) = (3,) → array[192:256]
 # ```
 #
 # Inside the kernel, `pl.program_id(axis)` returns the current grid index.
