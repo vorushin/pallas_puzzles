@@ -1,0 +1,10 @@
+[project]
+name = "pallas_puzzles"
+version = "0.1.0"
+requires-python = ">=3.10"
+description = "Progressive Pallas kernel puzzles — from first kernel to ragged dot"
+dependencies = [
+    "jax>=0.4.30",
+    "jaxtyping",
+    "jupytext",
+]
