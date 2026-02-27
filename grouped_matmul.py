@@ -121,9 +121,6 @@ def grouped_matmul_spec(lhs, rhs, group_sizes):
     return out
 
 # %% [markdown]
-# ![Grouped matmul layout](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/grouped-matmul-layout.drawio.svg)
-
-# %% [markdown]
 # ---
 # # Part I: Scalar Prefetch & Group Metadata (Puzzles 1–2)
 
@@ -251,7 +248,7 @@ else:
 #
 # Given `group_sizes = [300, 212, 512]` with `bm = 128`:
 #
-# ![Groups and tiles](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/ragged-dot-puzzle2.drawio.svg)
+# ![Groups and tiles](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/grouped-matmul-puzzle2.drawio.svg)
 #
 # Tile at row 256 straddles the group boundary at row 300. It gets visited
 # **twice**: once for group 0 (rows 256-299 are valid) and once for group 1
@@ -461,7 +458,7 @@ def compute_tile_visits(group_sizes, group_offsets, tiles_m, bm):
         (tiles_m,) int32
     """
     # YOUR CODE HERE
-    # 1. Find group start positions (from offsets, skip the leading 0)
+    # 1. Find group start positions (offsets[:-1] = all but the trailing end)
     # 2. Identify which starts are non-aligned (start % bm != 0)
     #    AND belong to non-empty groups
     # 3. For non-aligned starts, compute which tile they land in (start // bm)
@@ -1122,7 +1119,7 @@ else:
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — Approach</summary>
 #
-# The kernel body is identical to basics.py Puzzle 8: zero / accumulate / store with `@pl.when`. The index maps (already provided) handle all the group-to-tile routing via `group_ids` and `m_tile_ids`. With `None` in the rhs BlockSpec, the group dimension is squeezed — `rhs_ref` is just `(bk, bn)`.
+# You don't need `group_metadata_ref` or `group_offset_ref` in the kernel body — the index maps already used them to route the right tiles. Focus on just `lhs_ref`, `rhs_ref`, `o_ref`, and `acc_ref`. With `None` in the rhs BlockSpec, the group dimension is squeezed — `rhs_ref` is just `(bk, bn)`.
 # </details>
 #
 # <details><summary>Hint 2 of 2 — Full solution</summary>

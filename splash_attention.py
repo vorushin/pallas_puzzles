@@ -23,8 +23,7 @@
 # Every puzzle runs on **CPU** via `interpret=True` — no TPU needed.
 #
 # **Prerequisites**: Complete **basics.py** first (Pallas foundations and
-# tiled matmul patterns). Puzzles 7–8 optionally reference scalar prefetch
-# from **ragged_dot.py**.
+# tiled matmul patterns).
 #
 # **Key references**:
 # - [Flash Attention paper](https://arxiv.org/abs/2205.14135) (Dao et al., 2022)
@@ -1286,7 +1285,7 @@ else:
 # The grid becomes `(tiles_q, grid_width)` instead of `(tiles_q, tiles_kv)`.
 #
 # To pass `data_next` and `mask_next` to the kernel, we use
-# **`PrefetchScalarGridSpec`** (from ragged_dot.py) — small metadata arrays
+# **`PrefetchScalarGridSpec`** — small metadata arrays
 # are loaded into scalar memory (SMEM, separate from VMEM where tile data lives)
 # and accessible to both index maps
 # and the kernel body. The index maps use `data_next` to route K,V loads
