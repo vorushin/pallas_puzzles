@@ -15,7 +15,7 @@
 #
 # # Pallas Puzzles: Ragged Dot
 #
-# **9 progressive puzzles** building toward a production **ragged_dot** kernel
+# **Progressive puzzles** building toward a production **ragged_dot** kernel
 # for Mixture-of-Experts. You'll implement scalar prefetch, group metadata,
 # masked stores, and full grouped matmul — the core of MoE dispatch on TPU.
 #
@@ -25,11 +25,6 @@
 # tiled matmul patterns).
 #
 # **Key Pallas docs**: https://docs.jax.dev/en/latest/pallas/index.html
-#
-# | Part | Puzzles | Focus |
-# |------|---------|-------|
-# | III — Scalar Prefetch | 1–5 | Runtime index maps, group metadata, masking |
-# | IV — Ragged Dot | 6–9 | Grouped matmul, tgmm, pipelining |
 
 # %% [markdown]
 # ## Setup
@@ -121,7 +116,7 @@ def rhs_index_map(g, perm_ref):
 def out_index_map(g, perm_ref):
     return (g, 0, 0)
 
-# %%
+# --- Tests ---
 lhs = jax.random.normal(jax.random.key(14), (G, M, K))
 rhs = jax.random.normal(jax.random.key(15), (G, K, N))
 perm = jnp.array([2, 0, 3, 1], dtype=jnp.int32)  # permutation
@@ -130,8 +125,8 @@ expected = permuted_matmul_spec(lhs, rhs, perm)
 
 actual = pl.pallas_call(
     permuted_matmul_kernel,
-    grid_spec=pltpu.PrefetchScalarGridSpec(
-        num_scalar_prefetch=1,
+    grid_spec=pltpu.PrefetchScalarGridSpec(  # bundles grid + specs + prefetch config
+        num_scalar_prefetch=1,  # first arg (perm) is prefetched to SMEM
         in_specs=[
             pl.BlockSpec((None, M, K), lhs_index_map),
             pl.BlockSpec((None, K, N), rhs_index_map),
@@ -267,8 +262,7 @@ def compute_group_offsets(group_sizes):
     """
     # YOUR CODE HERE
 
-
-# %%
+# --- Tests ---
 assert jnp.array_equal(
     compute_group_offsets(jnp.array([256, 256, 256, 256], dtype=jnp.int32)),
     jnp.array([0, 256, 512, 768, 1024], dtype=jnp.int32))
@@ -308,8 +302,7 @@ def compute_group_tiles(group_sizes, group_offsets, bm):
     # 3. Handle zero-size groups
     # 4. Convert rounded range sizes to tile counts
 
-
-# %%
+# --- Tests ---
 assert jnp.array_equal(
     compute_group_tiles(jnp.array([256, 256, 256, 256], dtype=jnp.int32),
                         jnp.array([0, 256, 512, 768, 1024], dtype=jnp.int32), 128),
@@ -361,8 +354,7 @@ def compute_group_ids(group_tiles, num_groups, max_len):
     """
     # YOUR CODE HERE
 
-
-# %%
+# --- Tests ---
 assert compute_group_ids(jnp.array([2, 2, 2, 2]), 4, 11)[:8].tolist() == [0, 0, 1, 1, 2, 2, 3, 3]
 assert compute_group_ids(jnp.array([3, 2, 4]), 3, 10)[:9].tolist() == [0, 0, 0, 1, 1, 2, 2, 2, 2]
 print("Step 2c — compute_group_ids: PASSED ✓")
@@ -413,8 +405,7 @@ def compute_tile_visits(group_sizes, group_offsets, tiles_m, bm):
     # 4. Count how many non-aligned boundaries per tile (jnp.histogram)
     # 5. Result = 1 + extra_visits_per_tile
 
-
-# %%
+# --- Tests ---
 assert compute_tile_visits(
     jnp.array([256, 256, 256, 256], dtype=jnp.int32),
     jnp.array([0, 256, 512, 768, 1024], dtype=jnp.int32), 8, 128
@@ -471,8 +462,7 @@ def compute_m_tile_ids(tile_visits, tiles_m, max_len):
     """
     # YOUR CODE HERE
 
-
-# %%
+# --- Tests ---
 assert compute_m_tile_ids(jnp.array([1,1,1,1,1,1,1,1]), 8, 11)[:8].tolist() == [0,1,2,3,4,5,6,7]
 assert compute_m_tile_ids(jnp.array([1,1,2,1,1,1,1,1]), 8, 10)[:9].tolist() == [0,1,2,2,3,4,5,6,7]
 print("Step 2e — compute_m_tile_ids: PASSED ✓")
@@ -516,8 +506,7 @@ def make_group_metadata_yours(group_sizes, m, bm):
 
     return (group_offsets, group_ids, m_tile_ids), num_tiles
 
-
-# %%
+# --- Tests ---
 # Integration tests — compare against reference
 def check_metadata(name, group_sizes, m, bm):
     ref, ref_nt = make_group_metadata_reference(group_sizes, m, bm)
@@ -637,7 +626,7 @@ expected = masked_copy_spec(x, group_offsets, group_ids, m_tile_ids)
 # - Call args: (group_offsets, group_ids, m_tile_ids, x) — scalar prefetch first!
 actual = None  # Replace with pl.pallas_call(...)(...) invocation
 
-# %%
+# --- Tests ---
 if actual is not None and jnp.allclose(actual, expected, atol=1e-5):
     print(f"PASSED ✓  (shape={actual.shape})")
 else:
@@ -753,8 +742,7 @@ def masked_copy_kernel(group_offsets_ref, group_ids_ref, m_tile_ids_ref,
     # 3. Build a 2D boolean mask for rows inside this group
     # 4. Masked store: only write rows belonging to this group
 
-
-# %%
+# --- Tests ---
 x = jax.random.normal(jax.random.key(27), (M, N))
 expected = masked_copy_spec(x, group_offsets, group_ids, m_tile_ids)
 
@@ -865,8 +853,7 @@ def softmax_kernel(x_ref, o_ref):
     # 2. Subtract max, exponentiate
     # 3. Divide by row sum
 
-
-# %%
+# --- Tests ---
 x = jax.random.normal(jax.random.key(28), (ROWS, COLS))
 
 # YOUR TASK: Write the kernel above AND define the config below.
@@ -1082,8 +1069,7 @@ def simple_gmm_kernel(group_metadata_ref, group_offset_ref,
     # 2. Accumulate tile matmul
     # 3. Store result on last K tile
 
-
-# %%
+# --- Tests ---
 lhs = jax.random.normal(jax.random.key(30), (M, K))
 rhs = jax.random.normal(jax.random.key(31), (G, K, N))
 expected = simple_gmm_spec(lhs, rhs, group_sizes)
@@ -1101,7 +1087,7 @@ actual = pl.pallas_call(
         ],
         out_specs=pl.BlockSpec((bm, bn), out_imap),
         grid=(tiles_n, num_tiles, tiles_k),
-        scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],
+        scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],  # accumulator in VMEM
     ),
     out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
     interpret=True,
@@ -1206,8 +1192,7 @@ def ragged_dot_kernel(group_metadata_ref, group_offset_ref,
     # Same as Puzzle 6, but on the last K tile, apply a masked store
     # so only rows belonging to the current group are written.
 
-
-# %%
+# --- Tests ---
 lhs = jax.random.normal(jax.random.key(40), (M, K))
 rhs = jax.random.normal(jax.random.key(41), (G, K, N))
 expected = ragged_dot_spec(lhs, rhs, group_sizes)
@@ -1385,8 +1370,7 @@ def tgmm_out_imap(n_i, k_i, grid_id, group_meta_ref, group_offset_ref):
     _, group_ids, _ = group_meta_ref
     return (group_ids[grid_id], k_i, n_i)
 
-
-# %%
+# --- Tests ---
 lhs_t = jax.random.normal(jax.random.key(50), (K, M))
 rhs = jax.random.normal(jax.random.key(51), (M, N))
 expected = tgmm_spec(lhs_t, rhs, group_sizes)

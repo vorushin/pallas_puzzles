@@ -15,7 +15,7 @@
 #
 # # Pallas Puzzles: Splash Attention
 #
-# **8 progressive puzzles** building from basic dot-product attention to
+# **Progressive puzzles** building from basic dot-product attention to
 # **splash attention** — JAX's production kernel for efficient
 # block-sparse attention on TPU. Along the way you'll implement online
 # softmax, flash attention, causal masking, and block-sparse dispatch.
@@ -31,11 +31,6 @@
 # - [Online normalizer calculation](https://arxiv.org/abs/1805.02867) (Milakov & Gimelshein, 2018)
 # - [JAX Pallas docs](https://docs.jax.dev/en/latest/pallas/index.html)
 # - [JAX splash attention source](https://github.com/jax-ml/jax/tree/main/jax/experimental/pallas/ops/tpu/splash_attention)
-#
-# | Part | Puzzles | Focus |
-# |------|---------|-------|
-# | I — Flash Attention | 1–5 | Attention, online softmax, tiled flash attention |
-# | II — Splash Attention | 6–8 | Causal masks, block-sparse dispatch, full splash |
 
 # %% [markdown]
 # ## Setup
@@ -118,8 +113,7 @@ def my_attention(Q, K, V):
     """
     # YOUR CODE HERE
 
-
-# %%
+# --- Tests ---
 expected = attention_spec(Q, K, V)
 actual = my_attention(Q, K, V)
 
@@ -236,8 +230,7 @@ def tiled_sumexp_kernel(x_ref, m_ref, l_ref):
     # 1. On first tile (k == 0): initialize l to 0
     # 2. On ALL tiles: l += sum(exp(tile - m))
 
-
-# %%
+# --- Tests ---
 x = jax.random.uniform(jax.random.key(10), (N,), minval=-5.0, maxval=-1.0)
 
 # Pass 1: find global max
@@ -409,8 +402,7 @@ def online_softmax_kernel(x_ref, m_ref, l_ref):
     # 2. On ALL tiles (including first): read tile, compute new max,
     #    apply correction to l, add new exponentials
 
-
-# %%
+# --- Tests ---
 x = jax.random.normal(jax.random.key(20), (N,))
 
 m, l = pl.pallas_call(
@@ -576,8 +568,7 @@ def tiled_attention_one_block_kernel(
     # 10. Update m = m_new
     # 11. On LAST KV block: o = acc / l[:, None]
 
-
-# %%
+# --- Tests ---
 expected = attention_one_block_spec(Q, K, V)
 
 actual = pl.pallas_call(
@@ -753,12 +744,11 @@ def flash_attention_kernel(
     # YOUR CODE HERE
     # Copy your Puzzle 4 kernel body — it works unchanged!
 
-
-# %%
+# --- Tests ---
 expected = flash_attention_spec(Q, K, V)
 actual = pl.pallas_call(
     flash_attention_kernel,
-    grid=(tiles_q, tiles_kv),
+    grid=(tiles_q, tiles_kv),  # 2D grid: Q blocks × KV blocks
     in_specs=[
         pl.BlockSpec((bq, H), lambda i, kv: (i, 0)),    # Q: route by i
         pl.BlockSpec((bk, H), lambda i, kv: (kv, 0)),   # K: route by kv
@@ -920,8 +910,7 @@ def causal_flash_kernel(
     #    do online softmax update
     # 4. Normalize on last kv block
 
-
-# %%
+# --- Tests ---
 expected = causal_attention_spec(Q, K, V)
 actual = pl.pallas_call(
     causal_flash_kernel,
@@ -1160,8 +1149,7 @@ def block_sparse_flash_kernel(
     #    - If block_type == 2: no mask needed (full visibility)
     # 4. Normalize on last kv block
 
-
-# %%
+# --- Tests ---
 expected = block_sparse_attention_spec(Q, K, V, block_mask, partial_masks)
 
 # For partial block indexing, we need to know which partial mask index
@@ -1427,8 +1415,7 @@ def splash_attention_kernel(
     #    - For partial blocks, look up mask from partial_masks_ref[i]
     # 4. Normalize on step == grid_width - 1
 
-
-# %%
+# --- Tests ---
 expected = splash_attention_spec(Q, K, V, data_next, mask_next, partial_masks)
 
 actual = pl.pallas_call(
