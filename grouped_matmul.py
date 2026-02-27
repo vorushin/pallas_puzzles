@@ -120,17 +120,8 @@ def grouped_matmul_spec(lhs, rhs, group_sizes):
         out = out.at[s:e].set(lhs[s:e] @ rhs[g])
     return out
 
-
 # %% [markdown]
-# ```
-# TODO diagram: MoE data layout. Left side: tokens colored by expert
-# assignment. Right side: lhs matrix with colored row bands per group,
-# rhs as a stack of G weight matrices. Arrow showing the grouped matmul
-# producing output with same row coloring. Keep compact.
-# ```
-#
-# > **Further reading** (not needed for these puzzles): auxiliary loss,
-# > load balancing, capacity factor, token dropping, expert parallelism.
+# ![Grouped matmul layout](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/grouped-matmul-layout.drawio.svg)
 
 # %% [markdown]
 # ---
