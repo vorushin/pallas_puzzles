@@ -85,7 +85,7 @@ print(f"JAX {jax.__version__}")
 # Here is the part of the famous Block Sparse Matrix Multiplication diagram
 # from [MegaBlocks: Efficient Sparse Training with Mixture-of-Experts](https://arxiv.org/abs/2211.15841):
 #
-# # ![Groups and tiles](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/megablocks_paper_block_sparse_mm.png)
+# # <img src="https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/megablocks_paper_block_sparse_mm.png" width="500">
 #
 # ### Data shapes for this notebook
 #
