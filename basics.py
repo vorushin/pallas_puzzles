@@ -32,8 +32,6 @@
 
 # %% [markdown]
 # ## Setup
-#
-# Click › to collapse this section, then click ▶ to get everything ready.
 
 # %%
 # !pip install -q jax jaxtyping
