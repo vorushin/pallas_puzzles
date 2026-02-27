@@ -5,93 +5,92 @@
 
     <!-- Titles -->
     <mxCell id="2" value="&lt;b&gt;A&lt;/b&gt;" style="text;fontSize=13;fontColor=#333333;align=center;html=1;" vertex="1" parent="1">
-      <mxGeometry x="44" y="0" width="144" height="18" as="geometry"/>
+      <mxGeometry x="22" y="0" width="160" height="20" as="geometry"/>
     </mxCell>
     <mxCell id="3" value="&lt;b&gt;B&lt;/b&gt;" style="text;fontSize=13;fontColor=#333333;align=center;html=1;" vertex="1" parent="1">
-      <mxGeometry x="264" y="0" width="124" height="18" as="geometry"/>
+      <mxGeometry x="256" y="0" width="80" height="20" as="geometry"/>
     </mxCell>
     <mxCell id="4" value="&lt;b&gt;C&lt;/b&gt;" style="text;fontSize=13;fontColor=#333333;align=center;html=1;" vertex="1" parent="1">
-      <mxGeometry x="464" y="0" width="124" height="18" as="geometry"/>
+      <mxGeometry x="410" y="0" width="80" height="20" as="geometry"/>
     </mxCell>
 
     <!-- Top dimension labels -->
-    <mxCell id="5" value="&lt;i&gt;K&lt;/i&gt; = 256" style="text;fontSize=10;fontColor=#888888;align=center;html=1;" vertex="1" parent="1">
-      <mxGeometry x="44" y="18" width="144" height="16" as="geometry"/>
+    <mxCell id="5" value="&lt;i&gt;K&lt;/i&gt;" style="text;fontSize=11;fontColor=#888888;align=center;html=1;" vertex="1" parent="1">
+      <mxGeometry x="22" y="22" width="160" height="14" as="geometry"/>
     </mxCell>
-    <mxCell id="6" value="&lt;i&gt;N&lt;/i&gt; = 128" style="text;fontSize=10;fontColor=#888888;align=center;html=1;" vertex="1" parent="1">
-      <mxGeometry x="264" y="18" width="124" height="16" as="geometry"/>
+    <mxCell id="6" value="&lt;i&gt;N&lt;/i&gt;" style="text;fontSize=11;fontColor=#888888;align=center;html=1;" vertex="1" parent="1">
+      <mxGeometry x="256" y="22" width="80" height="14" as="geometry"/>
     </mxCell>
-    <mxCell id="7" value="&lt;i&gt;N&lt;/i&gt; = 128" style="text;fontSize=10;fontColor=#888888;align=center;html=1;" vertex="1" parent="1">
-      <mxGeometry x="464" y="18" width="124" height="16" as="geometry"/>
+    <mxCell id="7" value="&lt;i&gt;N&lt;/i&gt;" style="text;fontSize=11;fontColor=#888888;align=center;html=1;" vertex="1" parent="1">
+      <mxGeometry x="410" y="22" width="80" height="14" as="geometry"/>
     </mxCell>
 
     <!-- Side dimension labels -->
-    <mxCell id="8" value="&lt;i&gt;M&lt;/i&gt; = 128" style="text;fontSize=10;fontColor=#888888;align=right;html=1;verticalAlign=middle;" vertex="1" parent="1">
-      <mxGeometry x="0" y="36" width="40" height="88" as="geometry"/>
+    <mxCell id="8" value="&lt;i&gt;M&lt;/i&gt;" style="text;fontSize=11;fontColor=#888888;align=right;verticalAlign=middle;html=1;" vertex="1" parent="1">
+      <mxGeometry x="0" y="40" width="18" height="80" as="geometry"/>
     </mxCell>
-    <mxCell id="9" value="&lt;i&gt;K&lt;/i&gt; = 256" style="text;fontSize=10;fontColor=#888888;align=right;html=1;verticalAlign=middle;" vertex="1" parent="1">
-      <mxGeometry x="222" y="36" width="38" height="88" as="geometry"/>
+    <mxCell id="9" value="&lt;i&gt;K&lt;/i&gt;" style="text;fontSize=11;fontColor=#888888;align=right;verticalAlign=middle;html=1;" vertex="1" parent="1">
+      <mxGeometry x="234" y="40" width="18" height="160" as="geometry"/>
     </mxCell>
-    <mxCell id="58" value="&lt;i&gt;M&lt;/i&gt; = 128" style="text;fontSize=10;fontColor=#888888;align=right;html=1;verticalAlign=middle;" vertex="1" parent="1">
-      <mxGeometry x="420" y="36" width="40" height="88" as="geometry"/>
+    <mxCell id="58" value="&lt;i&gt;M&lt;/i&gt;" style="text;fontSize=11;fontColor=#888888;align=right;verticalAlign=middle;html=1;" vertex="1" parent="1">
+      <mxGeometry x="388" y="40" width="18" height="80" as="geometry"/>
     </mxCell>
 
-    <!-- Matrix A: row 0 highlighted (darker blue, thick border) -->
+    <!-- Matrix A: row 0 highlighted -->
     <mxCell id="10" value="A&lt;sub&gt;0,0&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#7fbaeb;strokeColor=#2860a0;strokeWidth=2;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="44" y="36" width="72" height="44" as="geometry"/>
+      <mxGeometry x="22" y="40" width="80" height="40" as="geometry"/>
     </mxCell>
     <mxCell id="11" value="A&lt;sub&gt;0,1&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#7fbaeb;strokeColor=#2860a0;strokeWidth=2;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="116" y="36" width="72" height="44" as="geometry"/>
+      <mxGeometry x="102" y="40" width="80" height="40" as="geometry"/>
     </mxCell>
     <mxCell id="12" value="A&lt;sub&gt;1,0&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="44" y="80" width="72" height="44" as="geometry"/>
+      <mxGeometry x="22" y="80" width="80" height="40" as="geometry"/>
     </mxCell>
     <mxCell id="13" value="A&lt;sub&gt;1,1&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="116" y="80" width="72" height="44" as="geometry"/>
+      <mxGeometry x="102" y="80" width="80" height="40" as="geometry"/>
     </mxCell>
 
     <!-- "@" operator -->
-    <mxCell id="14" value="@" style="text;fontSize=14;fontColor=#333333;align=center;verticalAlign=middle;html=1;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="192" y="65" width="24" height="24" as="geometry"/>
+    <mxCell id="14" value="@" style="text;fontSize=15;fontColor=#333333;align=center;verticalAlign=middle;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="198" y="68" width="24" height="24" as="geometry"/>
     </mxCell>
 
     <!-- Matrix B: col 0 highlighted -->
     <mxCell id="20" value="B&lt;sub&gt;0,0&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#7fbaeb;strokeColor=#2860a0;strokeWidth=2;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="264" y="36" width="62" height="44" as="geometry"/>
+      <mxGeometry x="256" y="40" width="40" height="80" as="geometry"/>
     </mxCell>
     <mxCell id="21" value="B&lt;sub&gt;0,1&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="326" y="36" width="62" height="44" as="geometry"/>
+      <mxGeometry x="296" y="40" width="40" height="80" as="geometry"/>
     </mxCell>
     <mxCell id="22" value="B&lt;sub&gt;1,0&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#7fbaeb;strokeColor=#2860a0;strokeWidth=2;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="264" y="80" width="62" height="44" as="geometry"/>
+      <mxGeometry x="256" y="120" width="40" height="80" as="geometry"/>
     </mxCell>
     <mxCell id="23" value="B&lt;sub&gt;1,1&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="326" y="80" width="62" height="44" as="geometry"/>
+      <mxGeometry x="296" y="120" width="40" height="80" as="geometry"/>
     </mxCell>
 
     <!-- "=" operator -->
-    <mxCell id="24" value="=" style="text;fontSize=14;fontColor=#333333;align=center;verticalAlign=middle;html=1;fontStyle=1;" vertex="1" parent="1">
-      <mxGeometry x="394" y="65" width="24" height="24" as="geometry"/>
+    <mxCell id="24" value="=" style="text;fontSize=15;fontColor=#333333;align=center;verticalAlign=middle;fontStyle=1;" vertex="1" parent="1">
+      <mxGeometry x="352" y="68" width="24" height="24" as="geometry"/>
     </mxCell>
 
-    <!-- Matrix C: C₀,₀ highlighted (darker green) -->
+    <!-- Matrix C: C0,0 highlighted -->
     <mxCell id="30" value="C&lt;sub&gt;0,0&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#a9d18e;strokeColor=#548235;strokeWidth=2;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="464" y="36" width="62" height="44" as="geometry"/>
+      <mxGeometry x="410" y="40" width="40" height="40" as="geometry"/>
     </mxCell>
     <mxCell id="31" value="C&lt;sub&gt;0,1&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="526" y="36" width="62" height="44" as="geometry"/>
+      <mxGeometry x="450" y="40" width="40" height="40" as="geometry"/>
     </mxCell>
     <mxCell id="32" value="C&lt;sub&gt;1,0&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="464" y="80" width="62" height="44" as="geometry"/>
+      <mxGeometry x="410" y="80" width="40" height="40" as="geometry"/>
     </mxCell>
     <mxCell id="33" value="C&lt;sub&gt;1,1&lt;/sub&gt;" style="rounded=0;whiteSpace=wrap;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;html=1;" vertex="1" parent="1">
-      <mxGeometry x="526" y="80" width="62" height="44" as="geometry"/>
+      <mxGeometry x="450" y="80" width="40" height="40" as="geometry"/>
     </mxCell>
 
     <!-- K-sweep formula -->
-    <mxCell id="40" value="C&lt;sub&gt;0,0&lt;/sub&gt; = A&lt;sub&gt;0,0&lt;/sub&gt; @ B&lt;sub&gt;0,0&lt;/sub&gt; + A&lt;sub&gt;0,1&lt;/sub&gt; @ B&lt;sub&gt;1,0&lt;/sub&gt;  (sum over &lt;i&gt;k&lt;/i&gt;)" style="text;fontSize=11;fontColor=#666666;fontStyle=0;align=center;html=1;" vertex="1" parent="1">
-      <mxGeometry x="40" y="134" width="500" height="20" as="geometry"/>
+    <mxCell id="40" value="C&lt;sub&gt;0,0&lt;/sub&gt; = A&lt;sub&gt;0,0&lt;/sub&gt; @ B&lt;sub&gt;0,0&lt;/sub&gt; + A&lt;sub&gt;0,1&lt;/sub&gt; @ B&lt;sub&gt;1,0&lt;/sub&gt;  (sum over &lt;i&gt;k&lt;/i&gt;)" style="text;fontSize=11;fontColor=#666666;align=center;html=1;" vertex="1" parent="1">
+      <mxGeometry x="45" y="210" width="400" height="20" as="geometry"/>
     </mxCell>
-
   </root>
 </mxGraphModel>
