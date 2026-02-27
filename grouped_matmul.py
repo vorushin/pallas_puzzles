@@ -87,6 +87,18 @@ print(f"JAX {jax.__version__}")
 #
 # # <img src="https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/megablocks_paper_block_sparse_mm.png" width="500">
 #
+# ### Reference materials
+#
+# - [Sparse computations on TPU with Pallas](https://docs.jax.dev/en/latest/pallas/tpu/sparse.html) —
+#   official JAX tutorial on using scalar prefetch for block-sparse kernels,
+#   including a grouped matmul example.
+# - [`jax.experimental.pallas.ops.tpu.megablox`](https://github.com/jax-ml/jax/tree/main/jax/experimental/pallas/ops/tpu/megablox) —
+#   production MegaBlox grouped matmul kernels in the JAX repo, used by
+#   MaxText and other large-scale MoE training frameworks.
+# - [Tokamax `ragged_dot`](https://github.com/openxla/tokamax) —
+#   cross-platform (GPU + TPU) kernel library built on Pallas, with an
+#   optimized ragged dot implementation for MoE workloads.
+#
 # ### Data shapes for this notebook
 #
 # - `lhs (M, K)` — concatenated token representations
