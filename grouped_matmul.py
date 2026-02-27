@@ -270,9 +270,9 @@ else:
 # The arrays can be longer than `num_tiles` (padded with the last group).
 
 # %% [markdown]
-# ### Step 2a: Group Offsets (provided)
+# ### Step 2a: Group Offsets
 #
-# CSR-style prefix sum: `[0, cumsum(group_sizes)]`.
+# **Goal**: Compute CSR-style prefix sum of group sizes.
 #
 # ```
 # group_sizes = [300, 212, 512]
@@ -284,16 +284,28 @@ else:
 # %%
 def compute_group_offsets(group_sizes):
     """[0, cumsum(group_sizes)] — maps group id to start row."""
-    return jnp.concatenate([jnp.zeros(1, dtype=jnp.int32), jnp.cumsum(group_sizes)])
+    # YOUR CODE HERE
+    # Concatenate a leading zero with the cumulative sum of group_sizes
 
-# Quick check
+# --- Tests ---
 assert jnp.array_equal(
     compute_group_offsets(jnp.array([300, 212, 512], dtype=jnp.int32)),
     jnp.array([0, 300, 512, 1024], dtype=jnp.int32))
+assert jnp.array_equal(
+    compute_group_offsets(jnp.array([256, 256, 256, 256], dtype=jnp.int32)),
+    jnp.array([0, 256, 512, 768, 1024], dtype=jnp.int32))
 print("Step 2a — compute_group_offsets: PASSED ✓")
 
 # %% [markdown]
-# ### Step 2b: Tiles per Group — STUDENT IMPLEMENTS
+# <details><summary>Hint — Full solution</summary>
+#
+# ```python
+# return jnp.concatenate([jnp.zeros(1, dtype=jnp.int32), jnp.cumsum(group_sizes)])
+# ```
+# </details>
+
+# %% [markdown]
+# ### Step 2b: Tiles per Group
 #
 # **Goal**: Compute how many tile visits each group needs.
 #
@@ -360,28 +372,41 @@ print("Step 2b — compute_group_tiles: PASSED ✓")
 # </details>
 
 # %% [markdown]
-# ### Step 2c: Group IDs (provided)
+# ### Step 2c: Group IDs
 #
-# Flat array mapping grid index to group id.
+# **Goal**: Create a flat array mapping each grid index to its group id.
+#
 # ```
 # group_tiles = [3, 2, 4]  →  group_ids = [0,0,0, 1,1, 2,2,2,2]
 # ```
+#
+# Use `jnp.repeat` with `total_repeat_length`.
 
 # %%
 def compute_group_ids(group_tiles, num_groups, max_len):
     """Flat array mapping grid index to group id."""
-    return jnp.repeat(
-        jnp.arange(num_groups, dtype=jnp.int32),
-        group_tiles,
-        total_repeat_length=max_len,
-    )
+    # YOUR CODE HERE
+    # Repeat each group index by the number of tiles it has
 
-# Quick check
+# --- Tests ---
 assert compute_group_ids(jnp.array([3, 2, 4]), 3, 10)[:9].tolist() == [0, 0, 0, 1, 1, 2, 2, 2, 2]
+assert compute_group_ids(jnp.array([2, 2, 2, 2]), 4, 8).tolist() == [0, 0, 1, 1, 2, 2, 3, 3]
 print("Step 2c — compute_group_ids: PASSED ✓")
 
 # %% [markdown]
-# ### Step 2d: Tile Visits — STUDENT IMPLEMENTS
+# <details><summary>Hint — Full solution</summary>
+#
+# ```python
+# return jnp.repeat(
+#     jnp.arange(num_groups, dtype=jnp.int32),
+#     group_tiles,
+#     total_repeat_length=max_len,
+# )
+# ```
+# </details>
+
+# %% [markdown]
+# ### Step 2d: Tile Visits
 #
 # **Goal**: Count how many times each tile is visited.
 #
@@ -454,28 +479,42 @@ print("Step 2d — compute_tile_visits: PASSED ✓")
 # </details>
 
 # %% [markdown]
-# ### Step 2e: M-tile IDs (provided)
+# ### Step 2e: M-tile IDs
 #
-# Flat array mapping grid index to m-tile id.
+# **Goal**: Create a flat array mapping each grid index to its m-tile id.
+# Tiles visited twice (boundary tiles) appear twice.
+#
 # ```
 # tile_visits = [1,1,2,1,1,1,1,1]  →  m_tile_ids = [0,1,2,2,3,4,5,6,7]
 # ```
+#
+# Use `jnp.repeat` with `total_repeat_length`.
 
 # %%
 def compute_m_tile_ids(tile_visits, tiles_m, max_len):
     """Flat array mapping grid index to m-tile id."""
-    return jnp.repeat(
-        jnp.arange(tiles_m, dtype=jnp.int32),
-        tile_visits,
-        total_repeat_length=max_len,
-    )
+    # YOUR CODE HERE
+    # Repeat each tile index by the number of visits it has
 
-# Quick check
+# --- Tests ---
 assert compute_m_tile_ids(jnp.array([1,1,2,1,1,1,1,1]), 8, 10)[:9].tolist() == [0,1,2,2,3,4,5,6,7]
+assert compute_m_tile_ids(jnp.array([1,1,1,1,1,1,1,1]), 8, 8).tolist() == [0,1,2,3,4,5,6,7]
 print("Step 2e — compute_m_tile_ids: PASSED ✓")
 
 # %% [markdown]
-# ### Step 2f: Combined `make_group_metadata` — STUDENT CHAINS steps 2a–2e
+# <details><summary>Hint — Full solution</summary>
+#
+# ```python
+# return jnp.repeat(
+#     jnp.arange(tiles_m, dtype=jnp.int32),
+#     tile_visits,
+#     total_repeat_length=max_len,
+# )
+# ```
+# </details>
+
+# %% [markdown]
+# ### Step 2f: Combined `make_group_metadata`
 
 # %%
 def make_group_metadata_yours(group_sizes, m, bm):
