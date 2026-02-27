@@ -517,27 +517,6 @@ print("Step 2e — compute_m_tile_ids: PASSED ✓")
 # ### Step 2f: Combined `make_group_metadata`
 
 # %%
-def make_group_metadata_yours(group_sizes, m, bm):
-    """Vectorized group metadata — chains steps 2a-2e.
-
-    Args:
-        group_sizes: jnp.array of shape (num_groups,), dtype int32
-        m: total number of rows
-        bm: tile size for m dimension
-
-    Returns:
-        (group_offsets, group_ids, m_tile_ids), num_tiles
-    """
-    num_groups = group_sizes.shape[0]
-    tiles_m = m // bm
-    max_len = tiles_m + num_groups - 1
-
-    # YOUR CODE HERE — chain steps 2a-2e, then compute num_tiles
-    # Replace this raise with your implementation:
-    raise NotImplementedError("Chain compute_group_offsets -> ... -> compute_m_tile_ids")
-
-    return (group_offsets, group_ids, m_tile_ids), num_tiles
-
 # --- Reference implementation for testing ---
 def make_group_metadata_reference(group_sizes, m, bm):
     """Simple reference implementation — O(m) but correct."""
@@ -574,6 +553,28 @@ def make_group_metadata_reference(group_sizes, m, bm):
         m_tile_ids = m_tile_ids.at[num_tiles:].set(m_tile_ids_list[-1])
 
     return (group_offsets.astype(jnp.int32), group_ids, m_tile_ids), num_tiles
+
+
+def make_group_metadata_yours(group_sizes, m, bm):
+    """Vectorized group metadata — chains steps 2a-2e.
+
+    Args:
+        group_sizes: jnp.array of shape (num_groups,), dtype int32
+        m: total number of rows
+        bm: tile size for m dimension
+
+    Returns:
+        (group_offsets, group_ids, m_tile_ids), num_tiles
+    """
+    num_groups = group_sizes.shape[0]
+    tiles_m = m // bm
+    max_len = tiles_m + num_groups - 1
+
+    # YOUR CODE HERE — chain steps 2a-2e, then compute num_tiles
+    # Replace this raise with your implementation:
+    raise NotImplementedError("Chain compute_group_offsets -> ... -> compute_m_tile_ids")
+
+    return (group_offsets, group_ids, m_tile_ids), num_tiles
 
 
 # --- Integration tests ---
