@@ -678,13 +678,6 @@ def out_imap(n_i, grid_id, k_i, group_meta_ref, group_offset_ref):
 # broadcasted_iota(int32, (4, 3), 0) -> [[0,0,0], [1,1,1], [2,2,2], [3,3,3]]
 # broadcasted_iota(int32, (4, 3), 1) -> [[0,1,2], [0,1,2], [0,1,2], [0,1,2]]
 # ```
-#
-# ```
-# TODO diagram: A tile straddling a group boundary. Show rows 256-383
-# with rows 256-299 belonging to group 0 (highlighted) and rows 300-383
-# belonging to group 1. Two visits: visit 1 masks top rows, visit 2
-# masks bottom rows.
-# ```
 
 # %%
 M = 1024
