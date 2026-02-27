@@ -20,20 +20,15 @@
 # that operates on small blocks of data, and `pallas_call` maps that function
 # across a grid of tiles covering the full arrays.
 #
-# This notebook contains **11 progressive puzzles** that
-# build your Pallas intuition from scratch, culminating in tiled matmul
-# with fusion. Every puzzle runs on **CPU**
-# via `interpret=True` — no TPU needed. Fill in the kernel skeletons and
-# run the test cells.
+# This notebook contains **progressive puzzles** that build your Pallas 
+# intuition from scratch. Every puzzle runs on **CPU** via 
+# `interpret=True` — no TPU needed. Fill in the kernel skeletons and
+# run the tests.
 #
 # **Prerequisites**: solid JAX/NumPy. No prior Pallas required.
 #
 # **Key Pallas docs**: https://docs.jax.dev/en/latest/pallas/index.html
 #
-# | Part | Puzzles | Focus |
-# |------|---------|-------|
-# | I — Foundations | 1–7 | Refs, grids, BlockSpec, `@pl.when` |
-# | II — Matmul Patterns | 8–11 | Scratch, accumulation, fusion |
 
 # %% [markdown]
 # ## Setup
@@ -95,8 +90,7 @@ def add10_kernel(x_ref, o_ref):
     # o_ref: Ref to output block (shape (N,))
     # YOUR CODE HERE
 
-
-# %%
+# --- Tests ---
 x = jax.random.uniform(jax.random.key(0), (N,))
 
 expected = add10_spec(x)
@@ -192,8 +186,7 @@ def vadd_kernel(x_ref, y_ref, o_ref):
     # Each invocation sees a (bm,) slice thanks to BlockSpec
     # YOUR CODE HERE
 
-
-# %%
+# --- Tests ---
 x = jax.random.uniform(jax.random.key(1), (N,))
 y = jax.random.uniform(jax.random.key(2), (N,))
 
@@ -269,8 +262,7 @@ def vadd_rev_spec(x, y):
 def vadd_rev_kernel(x_ref, y_ref, o_ref):
     o_ref[...] = x_ref[...] + y_ref[...]
 
-
-# %%
+# --- Tests ---
 x = jax.random.uniform(jax.random.key(100), (N,))
 y = jax.random.uniform(jax.random.key(101), (N,))
 
@@ -344,8 +336,7 @@ def mul2d_spec(x):
 def mul2d_kernel(x_ref, o_ref):
     # YOUR CODE HERE
 
-
-# %%
+# --- Tests ---
 x = jax.random.uniform(jax.random.key(3), (M, N))
 
 expected = mul2d_spec(x)
@@ -417,8 +408,7 @@ def outer_kernel(a_ref, b_ref, o_ref):
     # o_ref: (bm, bn) — output tile
     # YOUR CODE HERE
 
-
-# %%
+# --- Tests ---
 a = jax.random.uniform(jax.random.key(4), (M,))
 b = jax.random.uniform(jax.random.key(5), (N,))
 
@@ -491,8 +481,7 @@ def vadd_spec6(x, y):
 def vadd_kernel_solved(x_ref, y_ref, o_ref):
     o_ref[...] = x_ref[...] + y_ref[...]
 
-
-# %%
+# --- Tests ---
 x = jax.random.uniform(jax.random.key(10), (N,))
 y = jax.random.uniform(jax.random.key(11), (N,))
 
@@ -605,8 +594,7 @@ def rowsum_kernel(x_ref, o_ref):
     # 1. On first k tile (k_i == 0), initialize the output
     # 2. Add this tile's contribution to the running sum
 
-
-# %%
+# --- Tests ---
 x = jax.random.uniform(jax.random.key(6), (ROWS, COLS))
 expected = rowsum_spec(x)
 actual = pl.pallas_call(
@@ -737,8 +725,7 @@ def matmul_kernel(a_ref, b_ref, o_ref, acc_ref):
     # 2. Accumulate: acc_ref[...] += a_ref[...] @ b_ref[...]
     # 3. Store acc_ref → o_ref when k_i == tiles_k - 1
 
-
-# %%
+# --- Tests ---
 a = jax.random.normal(jax.random.key(7), (M, K))
 b = jax.random.normal(jax.random.key(8), (K, N))
 
@@ -841,8 +828,7 @@ def matmul_kernel_solved(a_ref, b_ref, o_ref, acc_ref):
     def _store():
         o_ref[...] = acc_ref[...]
 
-
-# %%
+# --- Tests ---
 a = jax.random.normal(jax.random.key(20), (M, K))
 b = jax.random.normal(jax.random.key(21), (K, N))
 
@@ -948,8 +934,7 @@ def batched_matmul_kernel(lhs_ref, rhs_ref, o_ref):
     # o_ref: (M, N) — one group's output (batch dim squeezed)
     # YOUR CODE HERE
 
-
-# %%
+# --- Tests ---
 lhs = jax.random.normal(jax.random.key(12), (G, M, K))
 rhs = jax.random.normal(jax.random.key(13), (G, K, N))
 
@@ -1032,8 +1017,7 @@ def fused_relu_kernel(a_ref, b_ref, o_ref, acc_ref):
     # YOUR CODE HERE
     # Same zero/accumulate/store as Puzzle 8, but apply ReLU before storing
 
-
-# %%
+# --- Tests ---
 a = jax.random.normal(jax.random.key(22), (M, K))
 b = jax.random.normal(jax.random.key(23), (K, N))
 
