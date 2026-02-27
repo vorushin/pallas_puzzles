@@ -29,8 +29,6 @@
 
 # %% [markdown]
 # ## Setup
-#
-# Click > to collapse this section, then click ▶ to get everything ready.
 
 # %%
 # !pip install -q jax jaxtyping
@@ -68,13 +66,26 @@ print(f"JAX {jax.__version__}")
 #
 # After routing, we have G groups of tokens (one per expert) with variable
 # sizes. The naive approach — a Python loop of G separate matmuls — has
-# terrible hardware utilization because each matmul is small and
-# underuses the MXU (TPU's matrix unit).
+# terrible hardware utilization because each matmul has different
+# shapes, causing JAX to compile lots of programs to execute them. Earlier
+# JAX implementations worked around the ragged shapes of tensors by capping
+# them to a certain limit and discarding tokens above the limit, but this
+# approach performs worse on the kinds of tasks that are very sensitive to
+# individual tokens (e.g., coding).
 #
 # **Grouped matmul** solves this: concatenate all tokens into a single
 # `lhs (M, K)`, stack expert weights into `rhs (G, K, N)`, and run one
 # kernel that handles all G matmuls. The kernel uses metadata to route
-# each tile to the correct expert.
+# each tile to the correct expert. Different numbers of tokens per expert
+# are handled by splitting the inputs into fixed tiles — the JAX compiler
+# sees only the constant tile sizes, and the logic of which tiles to
+# process fully and which to process multiple times with different expert
+# weights is handled by the kernel.
+#
+# Here is the part of the famous Block Sparse Matrix Multiplication diagram
+# from [MegaBlocks: Efficient Sparse Training with Mixture-of-Experts](https://arxiv.org/abs/2211.15841):
+#
+# # ![Groups and tiles](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/megablocks_paper_block_sparse_mm.png)
 #
 # ### Data shapes for this notebook
 #
