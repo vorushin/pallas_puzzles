@@ -883,23 +883,20 @@ else:
 
 # %% [markdown]
 # ---
-# ## Puzzle 10: Batched Matmul — Batch Dimension on RHS
+# ## Puzzle 10: Batched Matmul
 #
-# **Goal**: Compute `out[g] = lhs[g] @ rhs[g]` for `G` independent batches.
-# The RHS has a leading batch dimension.
+# **Goal**: Compute `out[b] = lhs[b] @ rhs[b]` for `B` independent batches.
 #
 # ### Theory
 #
-# In batched matmul, the RHS is `(G, K, N)` — a stack of `G` weight
-# matrices. Each batch element `g` has its own `(K, N)` matrix.
+# Batched matmul is everywhere in ML — multi-head attention, batched
+# inference, parallel projections. Both inputs have a leading batch
+# dimension: `lhs` is `(B, M, K)` and `rhs` is `(B, K, N)`.
 #
-# (We use `G` for the batch size here because in the ragged_dot notebook,
-# this same structure will represent **groups** in ragged_dot.)
-#
-# The grid adds a **batch dimension**: `grid = (G,)`.
+# The grid adds a **batch dimension**: `grid = (B,)`.
 # Each iteration's BlockSpec selects one batch element at a time.
 #
-# ![Batched matmul with group dimension](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/basics-puzzle10.drawio.svg)
+# ![Batched matmul diagram](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/basics-puzzle10.drawio.svg)
 #
 # **`None` vs integer in block_shape**: Using `None` means "load the entire
 # axis and **squeeze** that dimension". The ref will NOT have that dim.
@@ -909,45 +906,42 @@ else:
 # For a batch dim, `None` is convenient — the kernel sees simple 2D
 # shapes like `(M, K)` instead of `(1, M, K)`:
 # ```
-# BlockSpec((None, M, K), lambda g: (g, 0, 0))
+# BlockSpec((None, M, K), lambda b: (b, 0, 0))
 #            ^^^^
 #            squeezed — ref shape is (M, K), not (1, M, K)
 # ```
-#
-# This is the precursor to ragged_dot, where different row-ranges of a
-# single LHS matrix are multiplied by different group weight matrices.
 
 # %%
-G, M, K, N = 4, 64, 128, 64
+B, M, K, N = 4, 64, 128, 64
 
 # --- Reference ---
 def batched_matmul_spec(lhs, rhs):
-    """lhs: (G, M, K), rhs: (G, K, N) → (G, M, N)"""
-    return jnp.einsum('gmk,gkn->gmn', lhs, rhs)
+    """lhs: (B, M, K), rhs: (B, K, N) → (B, M, N)"""
+    return jnp.einsum('bmk,bkn->bmn', lhs, rhs)
 
 # --- Kernel skeleton ---
 def batched_matmul_kernel(lhs_ref, rhs_ref, o_ref):
     # With None in block_shape, the batch dim is squeezed:
-    # lhs_ref: (M, K) — one group's lhs (batch dim squeezed)
-    # rhs_ref: (K, N) — one group's rhs (batch dim squeezed)
-    # o_ref: (M, N) — one group's output (batch dim squeezed)
+    # lhs_ref: (M, K) — one batch's lhs (batch dim squeezed)
+    # rhs_ref: (K, N) — one batch's rhs (batch dim squeezed)
+    # o_ref: (M, N) — one batch's output (batch dim squeezed)
     # YOUR CODE HERE
 
 # --- Tests ---
-lhs = jax.random.normal(jax.random.key(12), (G, M, K))
-rhs = jax.random.normal(jax.random.key(13), (G, K, N))
+lhs = jax.random.normal(jax.random.key(12), (B, M, K))
+rhs = jax.random.normal(jax.random.key(13), (B, K, N))
 
 expected = batched_matmul_spec(lhs, rhs)
 actual = pl.pallas_call(
     batched_matmul_kernel,
-    grid=(G,),  # one invocation per batch element
+    grid=(B,),  # one invocation per batch element
     in_specs=[
-        pl.BlockSpec((None, M, K), lambda g: (g, 0, 0)),  # None squeezes batch dim → ref is (M, K)
-        pl.BlockSpec((None, K, N), lambda g: (g, 0, 0)),  # None squeezes batch dim → ref is (K, N)
+        pl.BlockSpec((None, M, K), lambda b: (b, 0, 0)),  # None squeezes batch dim → ref is (M, K)
+        pl.BlockSpec((None, K, N), lambda b: (b, 0, 0)),  # None squeezes batch dim → ref is (K, N)
     ],
-    out_specs=pl.BlockSpec((None, M, N), lambda g: (g, 0, 0)),
-    # Full output is (G, M, N) even though each kernel invocation writes (M, N)
-    out_shape=jax.ShapeDtypeStruct((G, M, N), jnp.float32),
+    out_specs=pl.BlockSpec((None, M, N), lambda b: (b, 0, 0)),
+    # Full output is (B, M, N) even though each kernel invocation writes (M, N)
+    out_shape=jax.ShapeDtypeStruct((B, M, N), jnp.float32),
     interpret=True,
 )(lhs, rhs)
 
