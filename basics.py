@@ -96,8 +96,9 @@ x = jax.random.uniform(jax.random.key(0), (N,))
 expected = add10_spec(x)
 actual = pl.pallas_call(
     add10_kernel,
-    out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),
-    interpret=True,
+    grid=(),  # single invocation — kernel sees the full arrays
+    out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),  # full output shape (not tile shape)
+    interpret=True,  # run on CPU (no TPU needed)
 )(x)
 
 if jnp.allclose(actual, expected, atol=1e-3):
@@ -342,7 +343,7 @@ x = jax.random.uniform(jax.random.key(3), (M, N))
 expected = mul2d_spec(x)
 actual = pl.pallas_call(
     mul2d_kernel,
-    grid=(M // bm, N // bn),
+    grid=(M // bm, N // bn),  # 2D grid — 4×4 = 16 invocations
     in_specs=[pl.BlockSpec((bm, bn), lambda i, j: (i, j))],
     out_specs=pl.BlockSpec((bm, bn), lambda i, j: (i, j)),
     out_shape=jax.ShapeDtypeStruct(x.shape, x.dtype),
@@ -417,8 +418,8 @@ actual = pl.pallas_call(
     outer_kernel,
     grid=(M // bm, N // bn),
     in_specs=[
-        pl.BlockSpec((bm,), lambda i, j: (i,)),
-        pl.BlockSpec((bn,), lambda i, j: (j,)),
+        pl.BlockSpec((bm,), lambda i, j: (i,)),  # a: select by row i
+        pl.BlockSpec((bn,), lambda i, j: (j,)),  # b: select by col j
     ],
     out_specs=pl.BlockSpec((bm, bn), lambda i, j: (i, j)),
     out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
@@ -599,9 +600,9 @@ x = jax.random.uniform(jax.random.key(6), (ROWS, COLS))
 expected = rowsum_spec(x)
 actual = pl.pallas_call(
     rowsum_kernel,
-    grid=(ROWS // bm, tiles_k),
+    grid=(ROWS // bm, tiles_k),  # iterate (row_blocks, k_blocks)
     in_specs=[pl.BlockSpec((bm, bk), lambda i, k: (i, k))],
-    out_specs=pl.BlockSpec((bm,), lambda i, k: (i,)),
+    out_specs=pl.BlockSpec((bm,), lambda i, k: (i,)),  # no k — same tile across K iterations
     out_shape=jax.ShapeDtypeStruct((ROWS,), jnp.float32),
     interpret=True,
 )(x)
@@ -732,14 +733,14 @@ b = jax.random.normal(jax.random.key(8), (K, N))
 expected = matmul_spec(a, b)
 actual = pl.pallas_call(
     matmul_kernel,
-    grid=(tiles_m, tiles_n, tiles_k),
+    grid=(tiles_m, tiles_n, tiles_k),  # 3D grid: M tiles × N tiles × K tiles
     in_specs=[
         pl.BlockSpec((bm, bk), lambda m, n, k: (m, k)),
         pl.BlockSpec((bk, bn), lambda m, n, k: (k, n)),
     ],
     out_specs=pl.BlockSpec((bm, bn), lambda m, n, k: (m, n)),
     out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
-    scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],
+    scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],  # accumulator in fast on-chip VMEM
     interpret=True,
 )(a, b)
 
@@ -941,10 +942,10 @@ rhs = jax.random.normal(jax.random.key(13), (G, K, N))
 expected = batched_matmul_spec(lhs, rhs)
 actual = pl.pallas_call(
     batched_matmul_kernel,
-    grid=(G,),
+    grid=(G,),  # one invocation per batch element
     in_specs=[
-        pl.BlockSpec((None, M, K), lambda g: (g, 0, 0)),
-        pl.BlockSpec((None, K, N), lambda g: (g, 0, 0)),
+        pl.BlockSpec((None, M, K), lambda g: (g, 0, 0)),  # None squeezes batch dim → ref is (M, K)
+        pl.BlockSpec((None, K, N), lambda g: (g, 0, 0)),  # None squeezes batch dim → ref is (K, N)
     ],
     out_specs=pl.BlockSpec((None, M, N), lambda g: (g, 0, 0)),
     # Full output is (G, M, N) even though each kernel invocation writes (M, N)
