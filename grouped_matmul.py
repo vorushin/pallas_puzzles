@@ -297,7 +297,13 @@ assert jnp.array_equal(
 print("Step 2a — compute_group_offsets: PASSED ✓")
 
 # %% [markdown]
-# <details><summary>Hint — Full solution</summary>
+# <details><summary>Hint 1 of 2 — Approach</summary>
+#
+# `jnp.cumsum` gives cumulative sums. You need to prepend a zero to get
+# the leading offset.
+# </details>
+#
+# <details><summary>Hint 2 of 2 — Full solution</summary>
 #
 # ```python
 # return jnp.concatenate([jnp.zeros(1, dtype=jnp.int32), jnp.cumsum(group_sizes)])
@@ -359,7 +365,21 @@ assert jnp.array_equal(
 print("Step 2b — compute_group_tiles: PASSED ✓")
 
 # %% [markdown]
-# <details><summary>Hint — Full solution</summary>
+# <details><summary>Hint 1 of 3 — Approach</summary>
+#
+# Extract group starts and ends from offsets. Round starts down to tile
+# boundaries (`start // bm * bm`), round ends up (`(end + bm - 1) // bm * bm`).
+# The number of tiles is the rounded range divided by `bm`.
+# </details>
+#
+# <details><summary>Hint 2 of 3 — Edge case</summary>
+#
+# Zero-size groups (where `group_sizes[g] == 0`) need special handling.
+# Their rounded range would be nonzero because start == end but rounding
+# can push them apart. Use `jnp.where(group_sizes == 0, 0, ...)`.
+# </details>
+#
+# <details><summary>Hint 3 of 3 — Full solution</summary>
 #
 # ```python
 # group_starts = group_offsets[:-1]
@@ -394,7 +414,14 @@ assert compute_group_ids(jnp.array([2, 2, 2, 2]), 4, 8).tolist() == [0, 0, 1, 1,
 print("Step 2c — compute_group_ids: PASSED ✓")
 
 # %% [markdown]
-# <details><summary>Hint — Full solution</summary>
+# <details><summary>Hint 1 of 2 — Approach</summary>
+#
+# `jnp.repeat` can repeat each element a different number of times.
+# Repeat `[0, 1, 2]` by `group_tiles` counts. Use `total_repeat_length`
+# to fix the output size (required for JIT compatibility).
+# </details>
+#
+# <details><summary>Hint 2 of 2 — Full solution</summary>
 #
 # ```python
 # return jnp.repeat(
@@ -465,7 +492,22 @@ assert compute_tile_visits(
 print("Step 2d — compute_tile_visits: PASSED ✓")
 
 # %% [markdown]
-# <details><summary>Hint — Full solution</summary>
+# <details><summary>Hint 1 of 3 — Approach</summary>
+#
+# Every tile starts with 1 visit. Extra visits come from non-aligned group
+# boundaries that land in the middle of a tile. Find those boundaries,
+# figure out which tile they're in, and count extras per tile.
+# </details>
+#
+# <details><summary>Hint 2 of 3 — Key trick</summary>
+#
+# For boundaries that are aligned or belong to empty groups, map them to
+# a dummy tile index (`tiles_m + 1`) so they fall outside the histogram
+# range. Then `jnp.histogram(..., bins=tiles_m, range=(0, tiles_m))`
+# counts only the real extra visits.
+# </details>
+#
+# <details><summary>Hint 3 of 3 — Full solution</summary>
 #
 # ```python
 # group_starts = group_offsets[:-1]
@@ -502,7 +544,13 @@ assert compute_m_tile_ids(jnp.array([1,1,1,1,1,1,1,1]), 8, 8).tolist() == [0,1,2
 print("Step 2e — compute_m_tile_ids: PASSED ✓")
 
 # %% [markdown]
-# <details><summary>Hint — Full solution</summary>
+# <details><summary>Hint 1 of 2 — Approach</summary>
+#
+# Same pattern as Step 2c, but repeat tile indices by their visit counts
+# instead of group indices by tile counts.
+# </details>
+#
+# <details><summary>Hint 2 of 2 — Full solution</summary>
 #
 # ```python
 # return jnp.repeat(
@@ -604,7 +652,14 @@ check_metadata("Zero-size group (non-aligned)",
                jnp.array([300, 0, 724], dtype=jnp.int32), 1024, 128)
 
 # %% [markdown]
-# <details><summary>Hint — Full solution</summary>
+# <details><summary>Hint 1 of 2 — Approach</summary>
+#
+# Call the functions in order: offsets → group_tiles → group_ids,
+# and in parallel offsets → tile_visits → m_tile_ids.
+# `num_tiles` is the total number of tile visits across all groups.
+# </details>
+#
+# <details><summary>Hint 2 of 2 — Full solution</summary>
 #
 # ```python
 # group_offsets = compute_group_offsets(group_sizes)
