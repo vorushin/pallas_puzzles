@@ -68,7 +68,9 @@ should show and why it helps — don't create the diagram yet:
 ```
 
 **When content is stable**, generate all diagrams in one batch using the
-`/drawio` skill. This enables consistent styling across diagrams.
+`/drawio` skill. This enables consistent styling across diagrams. The skill
+requires the `drawio` CLI — try to install it first, but if that's not
+possible in your environment, postpone diagram generation.
 
 **Files**: `images/<name>.drawio` (editable source) + `images/<name>.drawio.svg`
 (displayed in notebook). Reference in the `.py` notebook as:
