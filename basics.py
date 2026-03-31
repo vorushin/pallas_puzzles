@@ -647,10 +647,9 @@ else:
 
 # %% [markdown]
 # ---
-# ## Puzzle 8: Tiled Matmul with Scratch Accumulator
+# ## Puzzle 8: Tiled Matmul
 #
-# **Goal**: Implement tiled matrix multiplication `C = A @ B` using a scratch
-# buffer for accumulation across K tiles.
+# **Goal**: Implement tiled matrix multiplication `C = A @ B`.
 #
 # ### Theory
 #
@@ -660,20 +659,6 @@ else:
 # `A_tile @ B_tile`.
 #
 # ![Tiled matmul block decomposition](https://raw.githubusercontent.com/vorushin/pallas_puzzles/master/images/basics-puzzle8.drawio.svg)
-#
-# We use **scratch memory** (`scratch_shapes`) for the accumulator.
-# Scratch is allocated in **VMEM** — TPU's fast on-chip SRAM (like shared
-# memory on GPU). Why a separate accumulator instead of accumulating
-# directly in `o_ref`?
-#
-# **Precision**: In production, inputs and outputs are often bf16 to save
-# memory bandwidth, but bf16 has only a 7-bit mantissa. When we sum many
-# `A_tile @ B_tile` products, each partial sum may contribute small values
-# that fit in fp32 but get rounded to zero in bf16. An **fp32 scratch
-# accumulator** preserves these contributions across all K tiles, and only
-# converts to bf16 on the final store — giving a much more accurate result.
-#
-# Specify scratch with `pltpu.VMEM(shape, dtype)`.
 #
 # **`out_shape`** tells `pallas_call` the shape and dtype of the output
 # array to allocate. It's a `jax.ShapeDtypeStruct` — just metadata, no
@@ -687,20 +672,14 @@ else:
 # Inside a kernel, use `a @ b` (or equivalently `jax.lax.dot(a, b)`) for
 # the matrix multiply. Both map to the TPU's MXU (Matrix Multiplier Unit).
 #
-# The production-ready pattern uses `@pl.when` guards:
+# The accumulation pattern is the same as Puzzle 7 — conditionally zero
+# on the first K tile, then accumulate:
 # ```python
 # @pl.when(k_i == 0)           # ZERO on first K tile
-# def _(): acc[...] = zeros
+# def _(): out[...] = zeros
 #
-# acc[...] += a @ b             # ACCUMULATE on every tile
-#
-# @pl.when(k_i == tiles_k - 1) # STORE on last K tile
-# def _(): out[...] = acc[...]
+# out[...] += a @ b             # ACCUMULATE on every tile
 # ```
-#
-# On TPU hardware, `@pl.when` compiles to predicated execution — no branch
-# divergence penalty. This zero/accumulate/store pattern is used in every
-# production Pallas kernel.
 
 # %%
 M, K, N = 128, 256, 128
@@ -715,16 +694,14 @@ def matmul_spec(a, b):
     return a @ b
 
 # --- Kernel skeleton ---
-def matmul_kernel(a_ref, b_ref, o_ref, acc_ref):
+def matmul_kernel(a_ref, b_ref, o_ref):
     # a_ref: (bm, bk) — tile of A
     # b_ref: (bk, bn) — tile of B
-    # o_ref: (bm, bn) — output tile
-    # acc_ref: (bm, bn) — scratch accumulator (VMEM on TPU)
+    # o_ref: (bm, bn) — output tile (accumulator)
     k_i = pl.program_id(2)
     # YOUR CODE HERE
-    # 1. Zero acc_ref when k_i == 0
-    # 2. Accumulate: acc_ref[...] += a_ref[...] @ b_ref[...]
-    # 3. Store acc_ref → o_ref when k_i == tiles_k - 1
+    # 1. Zero o_ref when k_i == 0
+    # 2. Accumulate: o_ref[...] += a_ref[...] @ b_ref[...]
 
 # --- Tests ---
 a = jax.random.normal(jax.random.key(7), (M, K))
@@ -740,7 +717,6 @@ actual = pl.pallas_call(
     ],
     out_specs=pl.BlockSpec((bm, bn), lambda m, n, k: (m, n)),
     out_shape=jax.ShapeDtypeStruct((M, N), jnp.float32),
-    scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],  # accumulator in fast on-chip VMEM
     interpret=True,
 )(a, b)
 
@@ -758,13 +734,122 @@ else:
 # ```python
 # @pl.when(k_i == 0)
 # def _zero():
+#     o_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
+#
+# o_ref[...] += ...  # A_tile @ B_tile
+# ```
+# </details>
+#
+# <details><summary>Hint 2 of 2 — Full solution</summary>
+#
+# ```python
+# @pl.when(k_i == 0)
+# def _zero():
+#     o_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
+#
+# o_ref[...] += a_ref[...] @ b_ref[...]
+# ```
+# </details>
+
+# %% [markdown]
+# ---
+# ## Puzzle 8b: bf16 Matmul with fp32 Accumulator
+#
+# **Goal**: Implement `C = A @ B` where inputs and output are **bf16**, but
+# accumulation happens in **fp32** for precision.
+#
+# ### Theory
+#
+# In production, inputs and outputs are often bf16 to halve memory
+# bandwidth. But bf16 has only a **7-bit mantissa** — when we sum many
+# `A_tile @ B_tile` products, partial sums with small values get rounded
+# to zero in bf16 but would be preserved in fp32 (23-bit mantissa).
+#
+# The fix: accumulate in a **fp32 scratch buffer** in VMEM, and only
+# convert to bf16 on the final store.
+#
+# **Scratch memory** (`scratch_shapes`) is allocated in **VMEM** — TPU's
+# fast on-chip SRAM (like shared memory on GPU). Specify it with
+# `pltpu.VMEM(shape, dtype)`.
+#
+# The pattern adds a **store** step compared to Puzzle 8:
+# ```python
+# @pl.when(k_i == 0)           # ZERO on first K tile
+# def _(): acc[...] = zeros     # fp32 scratch
+#
+# acc[...] += a @ b             # ACCUMULATE in fp32
+#
+# @pl.when(k_i == tiles_k - 1) # STORE on last K tile
+# def _(): out[...] = acc[...]  # convert fp32 → bf16
+# ```
+#
+# On TPU hardware, `@pl.when` compiles to predicated execution — no branch
+# divergence penalty. This zero/accumulate/store pattern is used in every
+# production Pallas kernel with reduced-precision types.
+
+# %%
+M, K, N = 128, 256, 128
+bm, bk, bn = 64, 128, 64
+tiles_m = M // bm
+tiles_n = N // bn
+tiles_k = K // bk
+
+# --- Reference ---
+def matmul_bf16_spec(a, b):
+    """a: (M, K) bf16, b: (K, N) bf16 → (M, N) bf16, computed in fp32"""
+    return (a.astype(jnp.float32) @ b.astype(jnp.float32)).astype(jnp.bfloat16)
+
+# --- Kernel skeleton ---
+def matmul_bf16_kernel(a_ref, b_ref, o_ref, acc_ref):
+    # a_ref: (bm, bk) bf16 — tile of A
+    # b_ref: (bk, bn) bf16 — tile of B
+    # o_ref: (bm, bn) bf16 — output tile
+    # acc_ref: (bm, bn) fp32 — scratch accumulator (VMEM on TPU)
+    k_i = pl.program_id(2)
+    # YOUR CODE HERE
+    # 1. Zero acc_ref when k_i == 0
+    # 2. Accumulate in fp32: acc_ref[...] += a_ref[...].astype(jnp.float32) @ b_ref[...].astype(jnp.float32)
+    # 3. Store acc_ref → o_ref (fp32 → bf16) when k_i == tiles_k - 1
+
+# --- Tests ---
+a = jax.random.normal(jax.random.key(9), (M, K)).astype(jnp.bfloat16)
+b = jax.random.normal(jax.random.key(10), (K, N)).astype(jnp.bfloat16)
+
+expected = matmul_bf16_spec(a, b)
+actual = pl.pallas_call(
+    matmul_bf16_kernel,
+    grid=(tiles_m, tiles_n, tiles_k),
+    in_specs=[
+        pl.BlockSpec((bm, bk), lambda m, n, k: (m, k)),
+        pl.BlockSpec((bk, bn), lambda m, n, k: (k, n)),
+    ],
+    out_specs=pl.BlockSpec((bm, bn), lambda m, n, k: (m, n)),
+    out_shape=jax.ShapeDtypeStruct((M, N), jnp.bfloat16),
+    scratch_shapes=[pltpu.VMEM((bm, bn), jnp.float32)],  # fp32 accumulator in VMEM
+    interpret=True,
+)(a, b)
+
+if jnp.allclose(actual, expected, atol=1e-1):
+    print(f"PASSED ✓  (shape={actual.shape}, dtype={actual.dtype})")
+else:
+    diff = jnp.abs(actual.astype(jnp.float32) - expected.astype(jnp.float32))
+    print(f"FAILED ✗  max error: {float(jnp.max(diff)):.6f}")
+    print(f"  Expected:\n{expected[:4]}")
+    print(f"  Got:\n{actual[:4]}")
+
+# %% [markdown]
+# <details><summary>Hint 1 of 2 — Pattern skeleton</summary>
+#
+# ```python
+# @pl.when(k_i == 0)
+# def _zero():
 #     acc_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
 #
-# acc_ref[...] += ...  # A_tile @ B_tile
+# acc_ref[...] += ...  # cast tiles to fp32, then matmul
 #
 # @pl.when(k_i == tiles_k - 1)
 # def _store():
-#     o_ref[...] = acc_ref[...]
+#     o_ref[...] = acc_ref[...].astype(jnp.bfloat16)
 # ```
 # </details>
 #
@@ -775,11 +860,11 @@ else:
 # def _zero():
 #     acc_ref[...] = jnp.zeros((bm, bn), dtype=jnp.float32)
 #
-# acc_ref[...] += a_ref[...] @ b_ref[...]
+# acc_ref[...] += a_ref[...].astype(jnp.float32) @ b_ref[...].astype(jnp.float32)
 #
 # @pl.when(k_i == tiles_k - 1)
 # def _store():
-#     o_ref[...] = acc_ref[...]
+#     o_ref[...] = acc_ref[...].astype(jnp.bfloat16)
 # ```
 # </details>
 
@@ -787,9 +872,9 @@ else:
 # ---
 # ## Puzzle 9: Configure Your Own Matmul `pallas_call`
 #
-# **Goal**: Given a working matmul kernel, fill in **all** the `pallas_call`
-# arguments: `grid`, `in_specs`, `out_specs`, `out_shape`, and
-# `scratch_shapes`.
+# **Goal**: Given a working matmul kernel (with fp32 accumulator from
+# Puzzle 8b), fill in **all** the `pallas_call` arguments: `grid`,
+# `in_specs`, `out_specs`, `out_shape`, and `scratch_shapes`.
 #
 # ### Theory
 #
@@ -806,7 +891,7 @@ else:
 #   → index map: `lambda m, n, k: (m, n)` (no K dependency!)
 #
 # Don't forget `out_shape` (the full output shape, not the tile shape)
-# and `scratch_shapes` (the VMEM accumulator from Puzzle 8).
+# and `scratch_shapes` (the VMEM accumulator from Puzzle 8b).
 
 # %%
 M, K, N = 128, 256, 128
@@ -818,7 +903,7 @@ tiles_k = K // bk
 def matmul_spec9(a, b):
     return a @ b
 
-# Kernel is provided (solved — same pattern as Puzzle 8):
+# Kernel is provided (solved — same pattern as Puzzle 8b):
 def matmul_kernel_solved(a_ref, b_ref, o_ref, acc_ref):
     k_i = pl.program_id(2)
     @pl.when(k_i == 0)
@@ -982,7 +1067,7 @@ else:
 # `C` back and applies ReLU. With fusion: ReLU is applied inside the kernel
 # before the final store, saving one full read+write of the output matrix.
 #
-# The pattern is the same zero/accumulate/store from Puzzle 8, but the
+# The pattern is the same zero/accumulate/store from Puzzle 8b, but the
 # **store** step applies the activation before writing:
 #
 # ```python
@@ -1010,7 +1095,7 @@ def fused_relu_spec(a, b):
 def fused_relu_kernel(a_ref, b_ref, o_ref, acc_ref):
     k_i = pl.program_id(2)
     # YOUR CODE HERE
-    # Same zero/accumulate/store as Puzzle 8, but apply ReLU before storing
+    # Same zero/accumulate/store as Puzzle 8b, but apply ReLU before storing
 
 # --- Tests ---
 a = jax.random.normal(jax.random.key(22), (M, K))
@@ -1041,7 +1126,7 @@ else:
 # %% [markdown]
 # <details><summary>Hint 1 of 2 — Approach</summary>
 #
-# Copy the Puzzle 8 solution, but change the store step to apply `jnp.maximum(..., 0)` before writing to `o_ref`.
+# Copy the Puzzle 8b solution, but change the store step to apply `jnp.maximum(..., 0)` before writing to `o_ref`.
 # </details>
 #
 # <details><summary>Hint 2 of 2 — Full solution</summary>
