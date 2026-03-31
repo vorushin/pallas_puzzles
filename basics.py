@@ -663,16 +663,15 @@ else:
 #
 # We use **scratch memory** (`scratch_shapes`) for the accumulator.
 # Scratch is allocated in **VMEM** — TPU's fast on-chip SRAM (like shared
-# memory on GPU). Why not just accumulate directly in `o_ref`? Two reasons:
-# 1. **Performance**: `o_ref` points to HBM. Reading and writing it on
-#    every K iteration means round-trips to slow off-chip memory.
-#    Scratch stays in fast VMEM throughout all K iterations.
-# 2. **Precision**: When the output is bf16, an fp32 scratch accumulator
-#    preserves partial sums that would be lost in bf16's 7-bit mantissa.
-#    Each `A_tile @ B_tile` may contribute small values that fit in fp32
-#    but get rounded to zero in bf16. By accumulating in fp32 and only
-#    converting to bf16 on the final store, we get a much more accurate
-#    result.
+# memory on GPU). Why a separate accumulator instead of accumulating
+# directly in `o_ref`?
+#
+# **Precision**: In production, inputs and outputs are often bf16 to save
+# memory bandwidth, but bf16 has only a 7-bit mantissa. When we sum many
+# `A_tile @ B_tile` products, each partial sum may contribute small values
+# that fit in fp32 but get rounded to zero in bf16. An **fp32 scratch
+# accumulator** preserves these contributions across all K tiles, and only
+# converts to bf16 on the final store — giving a much more accurate result.
 #
 # Specify scratch with `pltpu.VMEM(shape, dtype)`.
 #
