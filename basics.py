@@ -667,9 +667,12 @@ else:
 # 1. **Performance**: `o_ref` points to HBM. Reading and writing it on
 #    every K iteration means round-trips to slow off-chip memory.
 #    Scratch stays in fast VMEM throughout all K iterations.
-# 2. **Correctness**: The output BlockSpec maps `(m, n, k) → (m, n)` —
-#    multiple K iterations target the same output tile. Without a local
-#    accumulator, K iteration 1 would overwrite K iteration 0's result.
+# 2. **Precision**: When the output is bf16, an fp32 scratch accumulator
+#    preserves partial sums that would be lost in bf16's 7-bit mantissa.
+#    Each `A_tile @ B_tile` may contribute small values that fit in fp32
+#    but get rounded to zero in bf16. By accumulating in fp32 and only
+#    converting to bf16 on the final store, we get a much more accurate
+#    result.
 #
 # Specify scratch with `pltpu.VMEM(shape, dtype)`.
 #
